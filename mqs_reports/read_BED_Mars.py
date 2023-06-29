@@ -20,6 +20,9 @@ XMLNS_SINGLESTATION_ABBREV = "sst"
 XMLNS_SINGLESTATION = "http://quakeml.org/xmlns/singlestation/1.0"
 
 
+ALL_QUALITIES = ('A', 'B', 'C', 'D')
+
+
 def lxml_prefix_with_namespace(elementname, namespace):
     """Prefix an XML element name with a namsepace in lxml syntax."""
 
@@ -85,15 +88,13 @@ def qml_get_pick_time_for_phase(event_element, pref_ori_publicid, phase_name):
     return pick_time_str, pick_unc_str
 
 
-def qml_get_event_info_for_event_waveform_files(xml_root,
-                                                location_quality,
-                                                event_type,
-                                                phase_list):
+def qml_get_event_info_for_event_waveform_files(
+    xml_root, location_quality, event_type, phase_list):
+    
     event_info = []
 
     for ev in xml_root.iter(
-            "{}".format(
-                lxml_prefix_with_namespace("event", XMLNS_QUAKEML_BED))):
+        "{}".format(lxml_prefix_with_namespace("event", XMLNS_QUAKEML_BED))):
 
         # publicID
         ev_publicid = ev.get("publicID")
@@ -139,9 +140,12 @@ def qml_get_event_info_for_event_waveform_files(xml_root,
 
         if not ev_name:
             continue
+        
+        print("read event: {}".format(ev_name))
 
         # Get single station origin (for PDF based distance and origin time)
         sso = qml_get_sso_info_for_event_element(xml_root=xml_root, ev=ev)
+        
         if 'origin_time' in sso:
             sso_origin_time = sso['origin_time']
         else:
@@ -209,6 +213,7 @@ def qml_get_event_info_for_event_waveform_files(xml_root,
 
 
 def qml_get_sso_info_for_event_element(xml_root, ev):
+    
     sso_info = {}
 
     # preferredOriginID
@@ -277,8 +282,7 @@ def qml_get_sso_info_for_event_element(xml_root, ev):
         if distance is not None:
             sso_info['distance'] = float(distance)
 
-
-        distance_pdf_variable = lxml_text_or_none(
+        distance_pdf_variable_text = lxml_text_or_none(
             sso.find(
                 "./{}[@publicID='{}']/{}/{}/{}".format(
                     lxml_prefix_with_namespace("distance",
@@ -289,9 +293,14 @@ def qml_get_sso_info_for_event_element(xml_root, ev):
                     lxml_prefix_with_namespace("pdf",
                                                XMLNS_SINGLESTATION),
                     lxml_prefix_with_namespace("variable",
-                                               XMLNS_SINGLESTATION)
-                ))).split(' ')
-        distance_pdf_prob = lxml_text_or_none(
+                                               XMLNS_SINGLESTATION))))
+        
+        try:
+            distance_pdf_variable = distance_pdf_variable_text.split()
+        except Exception:
+            distance_pdf_variable = None
+            
+        distance_pdf_prob_text = lxml_text_or_none(
             sso.find(
                 "./{}[@publicID='{}']/{}/{}/{}".format(
                     lxml_prefix_with_namespace("distance",
@@ -302,12 +311,16 @@ def qml_get_sso_info_for_event_element(xml_root, ev):
                     lxml_prefix_with_namespace("pdf",
                                                XMLNS_SINGLESTATION),
                     lxml_prefix_with_namespace("probability",
-                                               XMLNS_SINGLESTATION)
-                ))).split(' ')
-
+                                               XMLNS_SINGLESTATION))))
+        
+        try:
+            distance_pdf_prob = distance_pdf_prob_text.split()
+        except Exception:
+            distance_pdf_prob = None
+        
         if distance_pdf_variable is not None:
-            sso_info['distance_pdf'] = np.asarray((distance_pdf_variable, distance_pdf_prob),
-                                                  dtype=float)
+            sso_info['distance_pdf'] = np.asarray(
+                (distance_pdf_variable, distance_pdf_prob), dtype=float)
 
     if pref_ori_time_id is not None:
         origin_time = lxml_text_or_none(
@@ -348,12 +361,15 @@ def qml_get_sso_info_for_event_element(xml_root, ev):
     return sso_info
 
 
-def read_QuakeML_BED(fnam, event_type, phase_list,
-                     quality=('A', 'B', 'C', 'D')):
+def read_QuakeML_BED(
+    fnam, event_type, phase_list, quality=ALL_QUALITIES):
+    
     from lxml import etree
+    
     with open(fnam) as fh:
         tree = etree.parse(fh)
         xml_root = tree.getroot()
+        
         events = qml_get_event_info_for_event_waveform_files(
             xml_root, location_quality=quality,
             event_type=event_type,

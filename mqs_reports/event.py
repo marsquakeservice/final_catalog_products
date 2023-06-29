@@ -29,11 +29,13 @@ from mqs_reports.magnitudes import fit_spectra, calc_magnitude
 from mqs_reports.utils import create_fnam_event, read_data, calc_PSD, detick, \
     calc_cwf, solify
 
+
 RADIUS_MARS = 3389.5
 CRUST_VP = 4.
 CRUST_VS = 4. / 3. ** 0.5
 LANDER_LAT = 4.5024
 LANDER_LON = 135.6234
+
 
 EVENT_TYPES_SHORT = {
     'SUPER_HIGH_FREQUENCY': 'SF',
@@ -56,6 +58,26 @@ EVENT_TYPES_PRINT = {
 EVENT_TYPES = EVENT_TYPES_SHORT.keys()
 
 
+DISTANCE_SIGMA_DEFAULT = 20.0
+
+FILENAME_TEMPLATE_SP_HG_SM_100SPS = "XB.ELYSE.65.EH?.D.{:04d}.{:03d}"
+FILENAME_TEMPLATE_VBB_HG_SM_100SPS = "XB.ELYSE.00.HH?.D.{:04d}.{:03d}"
+
+FILENAME_TEMPLATE_VBB_HG_SM_20SPS = "XB.ELYSE.02.BH?.D.{:04d}.{:03d}"
+FILENAME_TEMPLATE_VBB_HG_SM_10SPS = "XB.ELYSE.03.BH?.D.{:04d}.{:03d}"
+
+FILENAME_TEMPLATE_VBB_LG_EM_100SPS = "XB.ELYSE.15.HL?.D.{:04d}.{:03d}"
+FILENAME_TEMPLATE_VBB_LG_SM_20SPS = "XB.ELYSE.07.BL?.D.{:04d}.{:03d}"
+
+FILENAME_TEMPLATE_PROCESSED_BH = "XB.{}.{}.BH?.D.{:04d}.{:03d}"
+
+FILTERBANK_CORNERS_COUNT = 8
+FILTERBANK_PLOT_SCALE_FACTOR = 4
+
+# ELYSE
+STATION_USE = 'ELYDL'
+
+
 class Event:
     def __init__(self,
                  name: str,
@@ -71,6 +93,7 @@ class Event:
                  sso_origin_time: str,
                  mars_event_type: str,
                  origin_time: str):
+        
         self.name = name.strip()
         self.publicid = publicid
         self.origin_publicid = origin_publicid
@@ -87,6 +110,7 @@ class Event:
                                  utct(self.picks['start']))
             self.duration_s = utct(self.picks['end']) - utct(
                 self.picks['start'])
+            
         except TypeError as e:
             print('incomplete picks for event %s' % self.name)
             print(self.picks)
@@ -102,6 +126,7 @@ class Event:
         # Case that location was determined from BAZ and distance
         if (abs(self.latitude - LANDER_LAT) > 1e-3 and
                 abs(self.longitude - LANDER_LON) > 1e-3):
+            
             dist_km, az, baz = gps2dist_azimuth(lat1=self.latitude,
                                                 lon1=self.longitude,
                                                 lat2=LANDER_LAT,
@@ -114,16 +139,22 @@ class Event:
             self.baz = baz
             self.az = az
             self.origin_time = utct(origin_time)
-            try:
-                self.calc_distance_sigma_from_pdf()
-            except TypeError as e:
-                print(self)
-                raise e
+            
+            self.calc_distance_sigma_from_pdf()
+            
+#             try:
+#                 self.calc_distance_sigma_from_pdf()
+#             
+#             except TypeError as e:
+#                 print(self)
+#                 raise e
+            
             self.distance_type = 'GUI'
 
         # Case that distance exists, but not BAZ. Then, distance and origin
         # time should be taken from SSO (ie the locator PDF output)
         elif sso_distance is not None:
+            
             self.origin_time = utct(sso_origin_time)
             self.distance = sso_distance
             self.distance_pdf = sso_distance_pdf
@@ -133,14 +164,18 @@ class Event:
 
         # Case that distance can be estimated from Pg/Sg arrivals
         elif self.mars_event_type_short in ['HF', 'SF', 'VF', '24']:
+            
             try:
-                distance_tmp, otime_tmp, distance_sigma_tmp = self.calc_distance()
+                distance_tmp, otime_tmp, distance_sigma_tmp = \
+                    self.calc_distance()
+            
             except ValueError as e:
                 print('Problem with event %s' % self.name)
                 print(e)
                 self.distance = None
                 self.distance_sigma = None
                 self.origin_time = utct(origin_time)
+            
             else:
                 if distance_tmp is not None:
                     self.distance = distance_tmp
@@ -178,12 +213,19 @@ class Event:
         return EVENT_TYPES_SHORT[self.mars_event_type]
 
     def __str__(self):
-        if self.distance is not None:
+        if self.distance is not None and self.baz is not None:
             string = "Event {name} ({mars_event_type_short}-{quality}), " \
-                     "distance: {distance:5.1f} degree ({distance_type})"
+                "distance: {distance:5.1f} deg ({distance_type}), "\
+                "BAZ: {baz:3.0f} deg"
+                 
+        elif self.distance is not None:
+            string = "Event {name} ({mars_event_type_short}-{quality}), " \
+                     "distance: {distance:5.1f} deg ({distance_type})"
+        
         else:
             string = "Event {name} ({mars_event_type_short}-{quality}), " \
                      "unknown distance"
+                 
         return string.format(**dict(inspect.getmembers(self)))
 
     def load_distance_manual(self,
@@ -202,10 +244,12 @@ class Event:
                 if overwrite or (self.distance is None):
                     if self.name == row['name']:
                         self.distance = float(row['distance'])
+                        
                         if self.distance_sigma is None:
                             self.distance_sigma = 20.
                         self.origin_time = utct(row['time'])
                         self.distance_type = 'aligned'
+                        
                         if 'sigma_dist' in row:
                             self.distance_sigma = np.float(row['sigma_dist'])
                         else:
@@ -290,22 +334,32 @@ class Event:
             return None, None
 
     def calc_distance_sigma_from_pdf(self):
+        
         from mqs_reports.utils import uncertainty_from_pdf
 
-        sigma_low, sigma_up = uncertainty_from_pdf(
-            variable=self.distance_pdf[0],
-            p=self.distance_pdf[1])
-        self.distance_sigma = (sigma_up - sigma_low) / 2.
-        pass
-
+        try:
+            sigma_low, sigma_up = uncertainty_from_pdf(
+                variable=self.distance_pdf[0],
+                p=self.distance_pdf[1])
+            
+            self.distance_sigma = (sigma_up - sigma_low) / 2.0
+            
+        except Exception as e:
+            print("cannot get distance sigma from PDF: {}".format(e))
+            self.distance_sigma = DISTANCE_SIGMA_DEFAULT
+    
+    
     def read_waveforms(self,
                        inv: obspy.Inventory,
                        sc3dir: str,
                        event_tmp_dir='./events',
                        kind: str = 'DISP',
                        fmin_SP: float = 0.5,
-                       fmin_VBB: float = 1. / 30.,
-                       t_pad_VBB:float = 300.) -> None:
+                       fmin_VBB: float = 1.0 / 30.0,
+                       t_pad_VBB: float = 300.0,
+                       station: str='ELYSE',
+                       location_code: str='00',
+                       remove_response: bool=True) -> None:
         """
         Wrapper to check whether local copy of corrected waveform exists and
         read it from sc3dir otherwise (and create local copy)
@@ -314,47 +368,88 @@ class Event:
         :param kind: 'DISP', 'VEL' or 'ACC'. Note that many other functions
                      expect the data to be in displacement
         """
-        if not self.read_data_local(dir_cache=event_tmp_dir):
+        if not self.read_data_local(
+            dir_cache=event_tmp_dir, station=station, 
+            location_code=location_code):
+            
+            print("no local copy of waveform found, reading from SDS archive")
+            
             self.read_data_from_sc3dir(inv, sc3dir, kind,
                                        fmin_SP=fmin_SP,
                                        fmin_VBB=fmin_VBB,
-                                       tpre_VBB=t_pad_VBB)
-            self.write_data_local(dir_cache=event_tmp_dir)
+                                       tpre_VBB=t_pad_VBB,
+                                       station=station, 
+                                       location_code=location_code,
+                                       remove_response=remove_response)
+            
+            self.write_data_local(
+                dir_cache=event_tmp_dir, station=station, 
+                location_code=location_code)
 
         if self.baz is not None:
             self.add_rotated_traces()
+            
         self._waveforms_read = True
         self.kind = 'DISP'
 
-    def add_rotated_traces(self):
-        # Add rotated phases to waveform objects
-        st_rot = self.waveforms_VBB.copy()
-        st_rot.rotate('NE->RT', back_azimuth=self.baz)
-        for chan in ['?HT', '?HR']:
-            self.waveforms_VBB += st_rot.select(channel=chan)[0]
 
+    def add_rotated_traces(self):
+        
+        # Add rotated phases to waveform objects
+        # Check if waveform exists (self.waveforms_VBB)
+        
+        if self.waveforms_VBB is not None:
+            
+            st_rot = self.waveforms_VBB.copy()
+            st_rot.rotate('NE->RT', back_azimuth=self.baz)
+            
+            for chan in ['?HT', '?HR']:
+                try:
+                    self.waveforms_VBB += st_rot.select(channel=chan)[0]
+                except IndexError:
+                    print("add_rotated_traces: cannot select channel {} in "\
+                        "VBB".format(chan))
+                    
         if self.waveforms_SP is not None:
             st_rot = self.waveforms_SP.copy()
             st_rot.rotate('NE->RT', back_azimuth=self.baz)
+            
             for chan in ['?HT', '?HR']:
-                self.waveforms_SP += st_rot.select(channel=chan)[0]
-
-    def read_data_local(self, dir_cache: str = 'events') -> bool:
+                try:
+                    self.waveforms_SP += st_rot.select(channel=chan)[0]
+                except IndexError:
+                    print("add_rotated_traces: cannot select channel {} in "\
+                        "SP".format(chan))
+    
+    
+    def read_data_local(self, 
+                        dir_cache: str='events',
+                        station: str='ELYSE',
+                        location_code: str='00') -> bool:
         """
         Read waveform data from local cache structure
         :param dir_cache: path to local cache
         :return: True if waveform was found in local cache
         """
         event_path = pjoin(dir_cache, '%s' % self.name)
-        waveform_path = pjoin(event_path, 'waveforms')
+        
+        waveform_path = pjoin(
+            event_path, 'waveforms', "{}.{}".format(station, location_code))
+        
         origin_path = pjoin(event_path, 'origin_id.txt')
+        
         success = False
+        
         VBB_path = pjoin(waveform_path, 'waveforms_VBB.mseed')
         SP_path = pjoin(waveform_path, 'waveforms_SP.mseed')
+        
         if len(glob(origin_path)) > 0:
+            
             with open(origin_path, 'r') as f:
                 origin_local = f.readline().strip()
+            
             if origin_local == self.origin_publicid:
+                
                 if len(glob(VBB_path)):
                     self.waveforms_VBB = obspy.read(VBB_path)
                     success = True
@@ -366,30 +461,42 @@ class Event:
                     success = True
                 else:
                     self.waveforms_SP = None
+        
         return success
 
-    def write_data_local(self, dir_cache: str = 'events'):
+    def write_data_local(self, 
+                         dir_cache: str='events',
+                         station: str='ELYSE', 
+                         location_code: str='00'):
         """
         Store waveform data in local cache structure
         @TODO: Save parameters (kind, filter) into file name
         :param dir_cache: path to local cache
         :return:
         """
+        
+        # NOTE(fab): these path definitions are redundant
         event_path = pjoin(dir_cache, '%s' % self.name)
-        waveform_path = pjoin(event_path, 'waveforms')
+        waveform_path = pjoin(
+            event_path, 'waveforms', "{}.{}".format(station, location_code))
+        
         origin_path = pjoin(event_path, 'origin_id.txt')
+        
         makedirs(waveform_path, exist_ok=True)
 
         with open(origin_path, 'w') as f:
             f.write(self.origin_publicid)
+        
         if self.waveforms_VBB is not None and len(self.waveforms_VBB) > 0:
             self.waveforms_VBB.write(pjoin(waveform_path,
                                            'waveforms_VBB.mseed'),
                                      format='MSEED', encoding='FLOAT64')
+        
         if self.waveforms_SP is not None and len(self.waveforms_SP) > 0:
             self.waveforms_SP.write(pjoin(waveform_path,
                                           'waveforms_SP.mseed'),
                                     format='MSEED', encoding='FLOAT64')
+
 
     def read_data_from_sc3dir(self,
                               inv: obspy.Inventory,
@@ -398,7 +505,10 @@ class Event:
                               fmin_SP=0.5,
                               fmin_VBB=1. / 30.,
                               tpre_SP: float = 100,
-                              tpre_VBB: float = 1200.) -> None:
+                              tpre_VBB: float = 1200.0,
+                              station: str='ELYSE',
+                              location_code: str='00',
+                              remove_response: bool=True) -> None:
         """
         Read waveform data into event object
         :param inv: obspy.Inventory object to use for instrument correction
@@ -407,6 +517,7 @@ class Event:
         :param tpre_SP: prefetch time for SP data (default: 100 sec)
         :param tpre_VBB: prefetch time for VBB data (default: 900 sec)
         """
+        
         self.kind = kind
 
         if len(self.picks['noise_start']) > 0:
@@ -420,90 +531,122 @@ class Event:
         else:
             twin_end = utct(self.picks['end'])
 
-        filenam_SP_HG = 'XB.ELYSE.65.EH?.D.%04d.%03d'
-        fnam_SP = create_fnam_event(
-            filenam_inst=filenam_SP_HG,
-            sc3dir=sc3dir, time=self.picks['start'])
-
-        if len(glob(fnam_SP)) > 0:
-            # Use SP waveforms only if 65.EH? exists, not otherwise (we
-            # don't need 20sps SP data)
-            self.waveforms_SP = read_data(fnam_SP, inv=inv, kind=kind,
-                                          twin=[twin_start - tpre_SP,
-                                                twin_end + tpre_SP],
-                                          fmin=fmin_SP)
-        else:
-            filenam_SP_HG = 'XB.ELYSE.00.HH?.D.%04d.%03d'
+        # 100sps SP
+        self.waveforms_SP = None
+        
+        if station == 'ELYSE':
+            
+            filenam_SP_HG = FILENAME_TEMPLATE_SP_HG_SM_100SPS
             fnam_SP = create_fnam_event(
                 filenam_inst=filenam_SP_HG,
                 sc3dir=sc3dir, time=self.picks['start'])
+
             if len(glob(fnam_SP)) > 0:
+                # Use SP waveforms only if 65.EH? exists, not otherwise (we
+                # don't need 20sps SP data)
                 self.waveforms_SP = read_data(fnam_SP, inv=inv, kind=kind,
-                                              twin=[twin_start - tpre_SP,
+                                            twin=[twin_start - tpre_SP,
                                                     twin_end + tpre_SP],
-                                              fmin=fmin_SP)
+                                            fmin=fmin_SP,
+                                            station=station, 
+                                            location_code=location_code,
+                                            remove_response=remove_response)
             else:
-                filenam_SP_HG = 'XB.ELYSE.65.EH?.D.%04d.%03d'
-                self.waveforms_SP = None
+                # 100sps VBB
+                filenam_SP_HG = FILENAME_TEMPLATE_VBB_HG_SM_100SPS
+                fnam_SP = create_fnam_event(
+                    filenam_inst=filenam_SP_HG,
+                    sc3dir=sc3dir, time=self.picks['start'])
+                if len(glob(fnam_SP)) > 0:
+                    self.waveforms_SP = read_data(fnam_SP, inv=inv, kind=kind,
+                                                twin=[twin_start - tpre_SP,
+                                                        twin_end + tpre_SP],
+                                                fmin=fmin_SP,
+                                            station=station,
+                                            location_code=location_code,
+                                            remove_response=remove_response)
+                else:
+                    filenam_SP_HG = FILENAME_TEMPLATE_SP_HG_SM_100SPS
+                    self.waveforms_SP = None
 
         # Try for 02.BH? (20sps VBB)
         success_VBB = False
-        filenam_VBB_HG = 'XB.ELYSE.02.BH?.D.%04d.%03d'
+        self.waveforms_VBB = None
+        
+        if station != 'ELYSE':
+            filenam_VBB_HG = FILENAME_TEMPLATE_PROCESSED_BH
+        else:
+            filenam_VBB_HG = FILENAME_TEMPLATE_VBB_HG_SM_20SPS
+        
         fnam_VBB = create_fnam_event(
             filenam_inst=filenam_VBB_HG,
-            sc3dir=sc3dir, time=self.picks['start'])
+            sc3dir=sc3dir, 
+            time=self.picks['start'],
+            station=station,
+            location_code=location_code)
+        
         if len(glob(fnam_VBB)) % 3 == 0:
-            self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
-                                           kind=kind,
-                                           fmin=fmin_VBB,
-                                           twin=[twin_start - tpre_VBB,
-                                                 twin_end + tpre_VBB])
+            self.waveforms_VBB = read_data(
+                fnam_VBB, inv=inv, kind=kind, fmin=fmin_VBB,
+                twin=[twin_start - tpre_VBB, twin_end + tpre_VBB],
+                station=station, 
+                location_code=location_code,
+                remove_response=remove_response)
+            
             if len(self.waveforms_VBB) == 3:
                 success_VBB = True
 
-        if not success_VBB:
+        if station == 'ELYSE' and not success_VBB:
             # Try for 03.BH? (10sps VBB)
-            filenam_VBB_HG = 'XB.ELYSE.03.BH?.D.%04d.%03d'
+            filenam_VBB_HG = FILENAME_TEMPLATE_VBB_HG_SM_10SPS
             fnam_VBB = create_fnam_event(
                 filenam_inst=filenam_VBB_HG,
                 sc3dir=sc3dir, time=self.picks['start'])
-            self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
-                                           kind=kind,
-                                           fmin=fmin_VBB,
-                                           twin=[twin_start - tpre_VBB,
-                                                 twin_end + tpre_VBB])
+            self.waveforms_VBB = read_data(
+                fnam_VBB, inv=inv, kind=kind, fmin=fmin_VBB,
+                twin=[twin_start - tpre_VBB, twin_end + tpre_VBB],
+                station=station, 
+                location_code=location_code,
+                remove_response=remove_response)
+            
             if len(self.waveforms_VBB) == 3:
                 success_VBB = True
 
-        if not success_VBB:
-            # Try for 15.BL? (10sps VBB)
-            filenam_VBB_HG = 'XB.ELYSE.15.HL?.D.%04d.%03d'
+        if station == 'ELYSE' and not success_VBB:
+            # Try for 15.BL? (10sps VBB) 15.BL? is 50sps LG engineering mode
+            # fab: error? H -> B? 15.HL? is 100sps VBB LG engineering mode 
+            filenam_VBB_HG = FILENAME_TEMPLATE_VBB_LG_EM_100SPS
             fnam_VBB = create_fnam_event(
                 filenam_inst=filenam_VBB_HG,
                 sc3dir=sc3dir, time=self.picks['start'])
-            self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
-                                           kind=kind,
-                                           fmin=fmin_VBB,
-                                           twin=[twin_start - tpre_VBB,
-                                                 twin_end + tpre_VBB])
+            self.waveforms_VBB = read_data(
+                fnam_VBB, inv=inv, kind=kind, fmin=fmin_VBB,
+                twin=[twin_start - tpre_VBB, twin_end + tpre_VBB],
+                station=station, 
+                location_code=location_code,
+                remove_response=remove_response)
+            
             if len(self.waveforms_VBB) == 3:
                 success_VBB = True
 
-        if not success_VBB:
+        if station == 'ELYSE' and not success_VBB:
             # Try for 07.BL? (20sps VBB low gain)
-            filenam_VBB_HG = 'XB.ELYSE.07.BL?.D.%04d.%03d'
+            # this is 20sps VBB LG engineering mode. Does he mean 02.BL?
+            filenam_VBB_HG = FILENAME_TEMPLATE_VBB_LG_SM_20SPS
             fnam_VBB = create_fnam_event(
                 filenam_inst=filenam_VBB_HG,
                 sc3dir=sc3dir, time=self.picks['start'])
-            self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
-                                           kind=kind,
-                                           fmin=fmin_VBB,
-                                           twin=[twin_start - tpre_VBB,
-                                                 twin_end + tpre_VBB])
+            self.waveforms_VBB = read_data(
+                fnam_VBB, inv=inv, kind=kind, fmin=fmin_VBB,
+                twin=[twin_start - tpre_VBB, twin_end + tpre_VBB],
+                station=station, 
+                location_code=location_code,
+                remove_response=remove_response)
+            
             if len(self.waveforms_VBB) == 3:
                 success_VBB = True
 
-        if not success_VBB:
+        if station == 'ELYSE' and not success_VBB:
             self.waveforms_VBB = None
 
         if self.waveforms_VBB is None and self.waveforms_SP is None:
@@ -1176,6 +1319,7 @@ class Event:
                              zorder=50)
 
         self.mark_phases(ax, tref=utct(self.picks['P']))
+        
         ax[0].set_yticks(range(0, nangles))
         ax[0].set_yticklabels(angles)
         ax[0].set_xlim(-50, 550)
@@ -1184,6 +1328,7 @@ class Event:
         ax[0].set_ylabel('Rotation angle')
         ax[0].set_title('Radial component')
         ax[1].set_title('Transversal component')
+        
         fig.suptitle('Event %s (%5.3f-%5.3f Hz)' %
                      (self.name, fmin, fmax))
         fig.savefig('rotations_%s_%3.1f_%3.1f_sec.png' %
@@ -1206,22 +1351,32 @@ class Event:
                 a.axvline(utct(self.picks[pick]) - tref,
                           c='darkgreen', ls='dashed')
 
+
     def plot_filterbank(self,
-                        fmin: float = 1. / 64,
-                        fmax: float = 4.,
-                        df: float = 2 ** 0.5,
-                        log: bool = False,
-                        waveforms: bool = False,
-                        normwindow: str = 'all',
-                        annotations: Annotations = None,
-                        tmin_plot: float = None,
-                        tmax_plot: float = None,
-                        timemarkers: dict = None,
-                        starttime: obspy.UTCDateTime = None,
-                        endtime: obspy.UTCDateTime = None,
-                        instrument: str = 'VBB',
-                        f_VBB_SP_transition = 7.5,
-                        fnam: str = None):
+                        fmin: float=1.0/64,
+                        fmax: float=4.0,
+                        df: float=2**0.5,
+                        log: bool=False,
+                        waveforms: bool=False,
+                        normwindow: str='all',
+                        annotations: Annotations=None,
+                        tmin_plot: float=None,
+                        tmax_plot: float=None,
+                        timemarkers: dict=None,
+                        starttime: obspy.UTCDateTime=None,
+                        endtime: obspy.UTCDateTime=None,
+                        instrument: str='VBB',
+                        f_VBB_SP_transition=7.5,
+                        station_code: str='ELYSE',
+                        location_code: str='02',
+                        normalize: bool=True,
+                        fnam: str=None):
+        """
+        log: plot waveforms in logarithmic scale 
+        waveform: plot waveforms in addition to envelopes
+        
+        """
+        
         import matplotlib.pyplot as plt
         import warnings
         from mqs_reports.utils import envelope_smooth
@@ -1243,7 +1398,13 @@ class Event:
         # Determine frequencies
         nfreqs = int(np.round(np.log(fmax / fmin) / np.log(df), decimals=0) + 1)
         freqs = np.geomspace(fmin, fmax + 0.001, nfreqs)
-
+        
+        f0 = freqs / df
+        f1 = freqs * df
+        
+        # print(self.waveforms_VBB)
+        # print(self.waveforms_SP)
+        
         # Reference time
         if 'P' in self.picks and len(self.picks['P']) > 0:
             t_ref = utct(self.picks['P'])
@@ -1255,9 +1416,15 @@ class Event:
             t_ref = self.starttime
             t_ref_type = 'start time'
 
+        if self.waveforms_VBB is None:
+            print("plot_filterbank: no VBB waveform")
+            plt.close()
+            return None
+        
         if instrument == 'VBB':
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
+        
         elif instrument == 'SP':
             try:
                 st_LF = self.waveforms_SP.select(channel='??[ENZ]').copy()
@@ -1265,14 +1432,17 @@ class Event:
             except AttributeError:
                 st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
                 st_HF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
+        
         elif instrument == 'both':
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_SP.select(channel='??[ENZ]').copy()
 
-
         else:
             raise ValueError(f'Invalid value for instrument: {instrument}')
 
+        # print(st_LF)
+        # print(st_HF)
+        
         try:
             st_HF.rotate('NE->RT', back_azimuth=self.baz)
             st_LF.rotate('NE->RT', back_azimuth=self.baz)
@@ -1287,10 +1457,12 @@ class Event:
         tend_norm = dict(P=self.picks['P_spectral_end'],
                          S=self.picks['S_spectral_end'],
                          all=self.endtime)
+        
         if normwindow == 'S' and len(tstart_norm[normwindow]) == 0:
             normwindow = 'P'
             if len(tstart_norm[normwindow]) == 0:
                 normwindow = 'all'
+        
         tstart_norm = utct(tstart_norm[normwindow])
         tend_norm = utct(tend_norm[normwindow])
 
@@ -1303,14 +1475,27 @@ class Event:
         if tmax_plot is None:
             tmax_plot = endtime - t_ref
 
+        # print(t_ref)
+        # print(starttime)
+        # print(endtime)
+        
         for st in (st_HF, st_LF):
-            st.trim(starttime=utct(starttime) - 1. / fmin,
-                    endtime=utct(endtime) + 1. / fmin)
+            st.trim(
+                starttime=utct(starttime) - 1.0/fmin,
+                endtime=utct(endtime) + 1.0/fmin)
 
+        norm_factors = [[], [], []]
+        norm_offsets = [[], [], []]
+        envelopes = [[], [], []]
+        waveform_tr = [[], [], []]
+        
+        xvec_env = []
+        xvec = []
+        
         for ifreq, fcenter in enumerate(freqs):
-            f0 = fcenter / df
-            f1 = fcenter * df
 
+            skip_freq_bin = False
+            
             if fcenter < f_VBB_SP_transition:
                 st_filt = st_LF.copy()
             else:
@@ -1319,75 +1504,151 @@ class Event:
             try:
                 with warnings.catch_warnings():
                     warnings.simplefilter('ignore')
-                    st_filt.filter('bandpass', freqmin=f0, freqmax=f1,
-                                   corners=8)
-            except ValueError:  # If f0 is above Nyquist
-                print('No 20sps data available for event %s' % self.name)
+                    st_filt.filter(
+                        'bandpass', freqmin=f0[ifreq], freqmax=f1[ifreq], 
+                        corners=FILTERBANK_CORNERS_COUNT)
+            
+            except ValueError as e:  
+                # If f0 is above Nyquist
+                print("Filter error, no 20sps data available for event {}: "\
+                    "{}".format(self.name, e))
+                skip_freq_bin = True
+            
             else:
-                st_filt.trim(starttime=utct(starttime),
-                             endtime=utct(endtime))
-
-                if rotated:
-                    tr_3 = st_filt.select(channel='?HT')[0]
-                    tr_2 = st_filt.select(channel='?HR')[0]
-                else:
-                    tr_2 = st_filt.select(channel='?HN')[0]
-                    tr_3 = st_filt.select(channel='?HE')[0]
-                tr_2_env = envelope_smooth(tr=tr_2, mode='same',
-                                           envelope_window_in_sec=10.)
-                tr_3_env = envelope_smooth(tr=tr_3, mode='same',
-                                           envelope_window_in_sec=10.)
+                
+                # print(st_filt)
+                
+                st_filt.trim(starttime=utct(starttime), endtime=utct(endtime))
+                # print(st_filt)
+                
+                try:
+                    if rotated:
+                        tr_3 = st_filt.select(channel='?HT')[0]
+                        tr_2 = st_filt.select(channel='?HR')[0]
+                    else:
+                        tr_2 = st_filt.select(channel='?HN')[0]
+                        tr_3 = st_filt.select(channel='?HE')[0]
+                
+                except IndexError:
+                    print("plot_filterbank: error on channel selection, "\
+                        "rotated: {}".format(rotated))
+                    plt.close()
+                    return None
+        
                 tr_Z = st_filt.select(channel='?HZ')[0]
-                tr_Z_env = envelope_smooth(tr=tr_Z, mode='same',
-                                           envelope_window_in_sec=10.)
+                
+                # compute waveform envelopes
+                # uses obspy.signal.filter.envelope()
+                tr_2_env = envelope_smooth(
+                    tr=tr_2, mode='same', envelope_window_in_sec=10.0)
+                
+                tr_3_env = envelope_smooth(
+                    tr=tr_3, mode='same', envelope_window_in_sec=10.0)
+                
+                tr_Z_env = envelope_smooth(
+                    tr=tr_Z, mode='same', envelope_window_in_sec=10.0)
 
-                tr_real = [tr_Z, tr_2, tr_3]
+                t_offset = float(tr_Z_env.stats.starttime - t_ref)
+                    
+                xvec_env.append(tr_Z_env.times() + t_offset)
+                xvec.append(tr_Z.times() + t_offset)
+                    
+                waveform_tr[0].append(tr_Z)
+                waveform_tr[1].append(tr_2)
+                waveform_tr[2].append(tr_3)
+                
                 for itr, tr in enumerate((tr_Z_env, tr_2_env, tr_3_env)):
+                    
+                    envelopes[itr].append(tr)
+                    
                     if log:
-                        tr_norm = tr.slice(starttime=tstart_norm,
-                                           endtime=tend_norm)
+                        tr_norm = tr.slice(
+                            starttime=tstart_norm, endtime=tend_norm)
+                        
                         maxfac = np.quantile(tr_norm.data, q=0.8)
                         offset = np.quantile(tr_norm.data, q=0.1)
+                    
                     else:
-                        tr_norm = tr.slice(starttime=tstart_norm,
-                                           endtime=tend_norm,
-                                           nearest_sample=True)
+                        tr_norm = tr.slice(
+                            starttime=tstart_norm, endtime=tend_norm,
+                            nearest_sample=True)
+                        
                         try:
                             maxfac = np.quantile(tr_norm.data, q=0.8)
                             offset = np.quantile(tr_norm.data, q=0.1)
                         except:
                             maxfac = 1.e-9
-                            offset = 0.
-
-                    t_offset = float(tr_Z_env.stats.starttime - t_ref)
-                    xvec_env = tr_Z_env.times() + t_offset
-                    xvec = tr_Z.times() + t_offset
-                    # ax[itr].plot(xvec_env,
-                    #              iangle + tr_Z_env.data / maxfac, c='grey',
-                    #              lw=1)
-                    # ax[itr].fill_between(x=xvec_env,
-                    #                      y1=iangle + tr_Z_env.data / maxfac,
-                    #                      y2=iangle, color='darkgrey')
-                    if log:
-                        ax[itr].plot(xvec_env,
-                                     ifreq + np.log(tr.data / maxfac) / 3,
-                                     lw=1.0, zorder=50)
+                            offset = 0.0
+                
+                    norm_factors[itr].append(maxfac)
+                    norm_offsets[itr].append(offset)
+        
+                    # print("freq {}, comp {}, fac {} offs {}".format(
+                    #     ifreq, itr, maxfac, offset))
+                    
+                    # end loop over trace components (subplots)
+            # end loop over freq bins
+        
+        for itr in range(len(envelopes)):
+            
+            # get maximum scaling factor for all freq bins in subplot 
+            # (component)
+            if not normalize:
+                max_maxfac = max(norm_factors[itr])
+                max_maxfac_idx = np.array(norm_factors[itr]).argmax()
+                
+                print("max fac for comp {} at idx {}: {}".format(
+                    itr, max_maxfac_idx, max_maxfac))
+            
+            for ifreq in range(len(freqs)):
+                
+                if skip_freq_bin:
+                    continue
+                
+                # normalize every freq bin to maximum amplitude
+                if normalize:
+                    max_maxfac = norm_factors[itr][ifreq]
+                
+                # ax[itr].plot(xvec_env,
+                #              iangle + tr_Z_env.data / maxfac, c='grey',
+                #              lw=1)
+                # ax[itr].fill_between(x=xvec_env,
+                #                      y1=iangle + tr_Z_env.data / maxfac,
+                #                      y2=iangle, color='darkgrey')
+                
+                offset = norm_offsets[itr][ifreq]
+                
+                if log:
+                    # plot envelopes
+                    ax[itr].plot(
+                        xvec_env[ifreq],
+                        ifreq + np.log(
+                            envelopes[itr][ifreq].data / max_maxfac) / \
+                                FILTERBANK_PLOT_SCALE_FACTOR,
+                        lw=1.0, zorder=50)
+                else:
+                    
+                    if waveforms:
+                        color = 'k'
                     else:
-                        if waveforms:
-                            color = 'k'
-                        else:
-                            color = 'C%d' % (ifreq % 10)
+                        color = 'C%d' % (ifreq % 10)
 
-                        ax[itr].plot(xvec_env,
-                                     ifreq + (tr.data - offset) / maxfac,
-                                     c=color,
-                                     lw=0.5, zorder=80)
-                        if waveforms:
-                            ax[itr].plot(xvec,
-                                         ifreq + tr_real[itr].data / maxfac,
-                                         c='C%d' % (ifreq % 10),
-                                         lw=0.5, zorder=50 - ifreq)
-
+                    # plot envelopes
+                    ax[itr].plot(
+                        xvec_env[ifreq],
+                        ifreq + \
+                            (envelopes[itr][ifreq].data - offset) / max_maxfac,
+                        c=color, lw=0.5, zorder=80)
+                    
+                    if waveforms:
+                        # plot waveforms
+                        ax[itr].plot(
+                            xvec[ifreq],
+                            ifreq + waveform_tr[itr][ifreq].data / max_maxfac,
+                            c='C%d' % (ifreq % 10),
+                            lw=0.5, zorder=50 - ifreq)
+        
+        # external time markers
         if timemarkers is not None:
             for phase, time in timemarkers.items():
                 if tmin_plot < time < tmax_plot:
@@ -1395,12 +1656,15 @@ class Event:
                         a.axvline(x=time, ls='dashed')
                         a.text(x=time, y=nfreqs, s=phase)
 
+        # phase markers: phases darkred, start/end darkgreen
         self.mark_phases(ax, tref=t_ref)
 
         if annotations is not None:
             annotations_event = annotations.select(
                 starttime=utct(self.picks['start']) - 180.,
                 endtime=utct(self.picks['end']) + 180.)
+            
+            # mark every annotation time window with vertical light grey box
             if len(annotations_event) > 0:
                 x0s = []
                 x1s = []
@@ -1415,11 +1679,13 @@ class Event:
                 for x0, x1 in zip(x0s, x1s):
                     mark_glitch(ax, x0, x1, fc='lightgrey',
                                 zorder=-3, alpha=0.8)
+            
+            # mark overall annotation(?) time window with horizontal grey box
             mark_glitch(ax,
                         x0=tstart_norm - float(t_ref),
                         x1=tend_norm - float(t_ref),
-                        ymin=-1, height=0.3, fc='grey', alpha=0.8
-                        )
+                        ymin=-1, height=0.3, fc='grey', alpha=0.8)
+        
         ax[0].set_yticks(range(0, nfreqs))
         np.set_printoptions(precision=3)
         ticklabels = []
@@ -1429,6 +1695,7 @@ class Event:
             else:
                 ticklabels.append(f'1/{1. / freq:.1f}')
         ax[0].set_yticklabels(ticklabels)
+        
         for a in ax:
             # a.set_xticks(np.arange(-300, 1000, 100), minor=False)
             a.set_xticks(np.arange(-300, 3000, 25), minor=True)
@@ -1436,34 +1703,44 @@ class Event:
                 a.set_xlabel('time after P-wave')
             else:
                 a.set_xlabel('time after start time')
+            
             a.grid(b=True, which='both', axis='x', lw=0.2, alpha=0.3)
             a.grid(b=True, which='major', axis='y', lw=0.2, alpha=0.3)
+            
+            # horizontal line at center of freq bins
             a.axhline(y=np.argmin(abs(freqs - 1.)),
                       ls='dashed', lw=1.0, c='k')
+        
         ax[0].set_xlim(tmin_plot, tmax_plot)
         ax[0].set_ylim(-1.5, nfreqs + 1.5)
         ax[0].set_ylabel('frequency / Hz')
         ax[0].set_title('Vertical')
+        
         if rotated:
             ax[1].set_title('Radial')
             ax[2].set_title('Transverse')
         else:
             ax[1].set_title('North/South')
             ax[2].set_title('East/West')
-        fig.suptitle('Event %s (%5.3f-%5.3f Hz)' %
-                     (self.name, fmin, fmax))
+        
+        fig.suptitle("Event {} {}/{} ({:5.3f}-{:5.3f} Hz), {}.{}".format(
+            self.name, self.mars_event_type_short, self.quality, fmin, fmax, 
+            station_code, location_code))
+        
         plt.subplots_adjust(top=0.911,
                             bottom=0.097,
                             left=0.089,
                             right=0.972,
                             hspace=0.2,
                             wspace=0.116)
+        
         if fnam is None:
             plt.show()
         else:
-            fig.savefig(fnam,
-                        dpi=200)
+            fig.savefig(fnam, dpi=200)
+        
         plt.close()
+
 
     def plot_filterbank_phase(self,
                               comp: str,

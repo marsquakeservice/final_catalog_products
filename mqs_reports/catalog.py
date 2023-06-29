@@ -31,6 +31,13 @@ from mqs_reports.snr import calc_stalta
 from mqs_reports.utils import plot_spectrum, envelope_smooth, pred_spec, solify
 
 
+PHASE_LIST = [
+    'start', 'end', 'P', 'S',  'PP', 'SS',  'Pg', 'Sg', 'Peak_M2.4',
+    'Peak_MbP', 'Peak_MbS', 'x1', 'x2', 'x3', 'noise_start', 'noise_end',
+    'P_spectral_start', 'P_spectral_end', 'S_spectral_start', 'S_spectral_end',
+    'R1', 'G1']
+
+
 class Catalog:
     def __init__(self,
                  events=None,
@@ -51,7 +58,9 @@ class Catalog:
                             "lower" for LF and BB
         """
         from mqs_reports.read_BED_Mars import read_QuakeML_BED
+        
         self.events = []
+        
         if events is None:
             if type_select == 'all':
                 type_des = EVENT_TYPES
@@ -79,28 +88,20 @@ class Catalog:
                 type_des = type_select
             else:
                 raise ValueError
+            
             if quality == 'all':
                 quality = ('A', 'B', 'C', 'D')
+                
             self.types = type_des
-            self.events.extend(read_QuakeML_BED(fnam=fnam_quakeml,
-                                                event_type=type_des,
-                                                quality=quality,
-                                                phase_list=['start', 'end',
-                                                            'P', 'S',
-                                                            'PP', 'SS',
-                                                            'Pg', 'Sg',
-                                                            'Peak_M2.4',
-                                                            'Peak_MbP',
-                                                            'Peak_MbS',
-                                                            'x1', 'x2', 'x3',
-                                                            'noise_start',
-                                                            'noise_end',
-                                                            'P_spectral_start',
-                                                            'P_spectral_end',
-                                                            'S_spectral_start',
-                                                            'S_spectral_end',
-                                                            'R1', 'G1'
-                                                            ]))
+            
+            events_from_xml = read_QuakeML_BED(
+                fnam=fnam_quakeml, event_type=type_des, quality=quality,
+                phase_list=PHASE_LIST)
+            
+            print("read {} events from QuakeML".format(len(events_from_xml)))
+            
+            self.events.extend(events_from_xml)
+        
         else:
             if isinstance(events, Event):
                 events = [events]

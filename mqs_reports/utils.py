@@ -30,17 +30,26 @@ def UTCify(LMST_time, sol0=UTCDateTime(2018, 11, 26, 5, 10, 50.33508)):
 
 
 def create_fnam_event(
-        time,
+    time, sc3dir, filenam_inst, station='ELYSE', location_code='00'):
+    
+    dirnam = pjoin(
         sc3dir,
-        filenam_inst
-        ):
-    dirnam = pjoin(sc3dir,
-                   'op/data/waveform/%04d/XB/ELYSE/' % utct(time).year)
+        "op/data/waveform/{:04d}/XB/{}/".format(utct(time).year, station))
+    
     dirnam_inst = pjoin(dirnam, '???.D')
 
     hour = utct(time).strftime('%H')
-    fnam_inst = pjoin(dirnam_inst,
-                      filenam_inst % (utct(time).year, utct(time).julday))
+    
+    if station != 'ELYSE':
+        fnam_inst = pjoin(
+            dirnam_inst, 
+            filenam_inst.format(
+                station, location_code, utct(time).year, utct(time).julday))
+    else:
+        fnam_inst = pjoin(
+            dirnam_inst, 
+            filenam_inst.format(utct(time).year, utct(time).julday))
+        
     if hour in ['00', '22', '23']:
         fnam_inst = fnam_inst[:-1] + '?'
 
@@ -97,7 +106,10 @@ def pred_spec(freqs, ds, Qm, amp, dist, mag, phase, vs=5.e3):
 
 
 def create_ZNE_HG(st: obspy.Stream,
-                  inv: obspy.Inventory = None):
+                  inv: obspy.Inventory=None,
+                  station: str='ELYSE',
+                  location_code='00'):
+    
     # dip_u, dip_v, dip_w, = -35.3, -35.3, -35.3
     # azimuth_u, azimuth_v, azimuth_w = 0., 120., 240.
 
@@ -118,19 +130,36 @@ def create_ZNE_HG(st: obspy.Stream,
             azi_v = 15.0
             azi_w = 255.0
         else:
-            chan_u = inv.select(station='ELYSE',
-                                starttime=st[0].stats.starttime,
-                                endtime=st[0].stats.endtime,
-                                channel=chan_name + 'U')[0][0][0]
-            chan_v = inv.select(station='ELYSE',
-                                starttime=st[0].stats.starttime,
-                                endtime=st[0].stats.endtime,
-                                channel=chan_name + 'V')[0][0][0]
-            chan_w = inv.select(station='ELYSE',
-                                starttime=st[0].stats.starttime,
-                                endtime=st[0].stats.endtime,
-                                channel=chan_name + 'W')[0][0][0]
-
+            if station != 'ELYSE':
+                chan_u = inv.select(station=station,
+                                    location=location_code,
+                                    starttime=st[0].stats.starttime,
+                                    endtime=st[0].stats.endtime,
+                                    channel=chan_name + 'U')[0][0][0]
+                chan_v = inv.select(station=station,
+                                    location=location_code,
+                                    starttime=st[0].stats.starttime,
+                                    endtime=st[0].stats.endtime,
+                                    channel=chan_name + 'V')[0][0][0]
+                chan_w = inv.select(station=station,
+                                    location=location_code,
+                                    starttime=st[0].stats.starttime,
+                                    endtime=st[0].stats.endtime,
+                                    channel=chan_name + 'W')[0][0][0]
+            else:
+                chan_u = inv.select(station=station,
+                                    starttime=st[0].stats.starttime,
+                                    endtime=st[0].stats.endtime,
+                                    channel=chan_name + 'U')[0][0][0]
+                chan_v = inv.select(station=station,
+                                    starttime=st[0].stats.starttime,
+                                    endtime=st[0].stats.endtime,
+                                    channel=chan_name + 'V')[0][0][0]
+                chan_w = inv.select(station=station,
+                                    starttime=st[0].stats.starttime,
+                                    endtime=st[0].stats.endtime,
+                                    channel=chan_name + 'W')[0][0][0]
+                
             dip_u = chan_u.dip
             dip_v = chan_v.dip
             dip_w = chan_w.dip
@@ -177,7 +206,10 @@ def create_ZNE_HG(st: obspy.Stream,
     return st_ZNE
 
 
-def read_data(fnam_complete, inv, kind, twin, fmin=1. / 20.):
+def read_data(
+    fnam_complete, inv, kind, twin, fmin=1.0/20.0, station='ELYSE',
+    location_code='00', remove_response=True):
+    
     # if type(fnam_complete) is list:
     #     st = obspy.Stream()
     #     for f in fnam_complete:
@@ -191,8 +223,8 @@ def read_data(fnam_complete, inv, kind, twin, fmin=1. / 20.):
         st = obspy.read(fnam_complete,
                         starttime=twin[0] - 300.,
                         endtime=twin[1] + 300,
-                        nearest_sample=False
-                        )
+                        nearest_sample=False)
+        
         # st = obspy.read(fnam_complete)
         # st.trim(starttime=twin[0] - 300.,
         #         endtime=twin[1] + 300)
@@ -203,16 +235,21 @@ def read_data(fnam_complete, inv, kind, twin, fmin=1. / 20.):
         st_seis.filter('highpass', zerophase=True, freq=fmin / 2.)
         st_seis.detrend()
         # correct_subsample_shift(st_seis)
+        
         if len(st_seis) > 0:
             if st_seis[0].stats.starttime < utct('20190418T12:24'):
                 correct_shift(st_seis.select(channel='??U')[0], nsamples=-1)
+                
             for tr in st_seis:
                 fmax = tr.stats.sampling_rate * 0.5
                 pre_filt = (fmin / 2., fmin, fmax*1.2, fmax * 1.5)
-                remove_response_stable(tr, inv, output=kind,
-                                       pre_filt=pre_filt)
+                if remove_response:
+                    remove_response_stable(tr, inv, output=kind,
+                                        pre_filt=pre_filt)
 
-            st_rot = create_ZNE_HG(st_seis, inv=inv)
+            st_rot = create_ZNE_HG(
+                st_seis, inv=inv, station=station, location_code=location_code)
+            
             if len(st_rot) > 0:
                 if st_rot.select(channel='??Z')[0].stats.channel == 'MHZ':
                     fnam = fnam_complete[0:-32] + 'BZC' + \
@@ -222,10 +259,11 @@ def read_data(fnam_complete, inv, kind, twin, fmin=1. / 20.):
                                       starttime=twin[0] - 900.,
                                       endtime=twin[1] + 900)[0]
                     fmax = tr_Z.stats.sampling_rate * 0.45
-                    tr_Z.remove_response(inv,
-                                         pre_filt=(
-                                             0.005, 0.01, fmax, fmax * 1.2),
-                                         output=kind)
+                    if remove_response:
+                        tr_Z.remove_response(inv,
+                                            pre_filt=(
+                                                0.005, 0.01, fmax, fmax * 1.2),
+                                            output=kind)
                     st_tmp = st_rot.copy()
                     st_rot = obspy.Stream()
                     tr_Z.stats.channel = 'MHZ'
@@ -237,15 +275,18 @@ def read_data(fnam_complete, inv, kind, twin, fmin=1. / 20.):
                     for tr in st_rot:
                         tr.data[np.isnan(tr.data)] = 0.
                     st_rot.filter('highpass', zerophase=True, freq=fmin)
+                
                 except(NotImplementedError):
                     # if there are gaps in the stream, return empty stream
                     st_rot = obspy.Stream()
+                
                 else:
                     st_rot.trim(starttime=twin[0], endtime=twin[1])
         else:
             st_rot = obspy.Stream()
     else:
         st_rot = obspy.Stream()
+    
     return st_rot
 
 
@@ -466,6 +507,7 @@ def plot_spectrum(ax, ax_all, df_mute, iax, ichan_in, spectrum,
 
 
 def envelope_smooth(envelope_window_in_sec, tr, mode='valid'):
+    
     tr_env = tr.copy()
     tr_env.data = envelope(tr_env.data)
 
