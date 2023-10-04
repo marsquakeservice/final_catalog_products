@@ -40,7 +40,7 @@ LANDER_LON = 135.6234
 EVENT_TYPES_SHORT = {
     'SUPER_HIGH_FREQUENCY': 'SF',
     'VERY_HIGH_FREQUENCY': 'VF',
-    'EXTREMELY_BROADBAND': 'XB',
+    'WIDEBAND': 'WB',
     'BROADBAND': 'BB',
     'LOW_FREQUENCY': 'LF',
     'HIGH_FREQUENCY': 'HF',
@@ -49,7 +49,7 @@ EVENT_TYPES_SHORT = {
 EVENT_TYPES_PRINT = {
     'SUPER_HIGH_FREQUENCY': 'super high frequency',
     'VERY_HIGH_FREQUENCY': 'very high frequency',
-    'EXTREMELY_BROADBAND': 'extremely broadband',
+    'WIDEBAND': 'wideband',
     'BROADBAND': 'broadband',
     'LOW_FREQUENCY': 'low frequency',
     'HIGH_FREQUENCY': 'high frequency',
@@ -74,6 +74,8 @@ FILENAME_TEMPLATE_PROCESSED_BH = "XB.{}.{}.BH?.D.{:04d}.{:03d}"
 FILTERBANK_CORNERS_COUNT = 8
 FILTERBANK_PLOT_SCALE_FACTOR = 4
 
+PICK_METHOD_ALIGNED = 'aligned'
+
 # ELYSE
 STATION_USE = 'ELYDL'
 
@@ -92,13 +94,15 @@ class Event:
                  sso_distance_pdf: float,
                  sso_origin_time: str,
                  mars_event_type: str,
-                 origin_time: str):
+                 origin_time: str,
+                 picks_methodid: dict):
         
         self.name = name.strip()
         self.publicid = publicid
         self.origin_publicid = origin_publicid
         self.picks = picks
         self.picks_sigma = picks_sigma
+        self.picks_methodid = picks_methodid
         self.quality = quality[-1]
         self.mars_event_type = mars_event_type.split('#')[-1]
 
@@ -711,9 +715,12 @@ class Event:
         :param padding: Zeropad signal by factor of 2 to smoothen spectra?
         """
 
+        print("calculating spectra")
+        
         if not self._waveforms_read:
             raise RuntimeError('waveforms not read in Event object\n' +
                                'Call Event.read_waveforms() first.')
+        
         twins = (((self.picks['start']),
                   (self.picks['end'])),
                  ((self.picks['noise_start']),
@@ -724,10 +731,8 @@ class Event:
                   (self.picks['S_spectral_end'])))
         self.spectra = dict()
         self.spectra_SP = dict()
-        variables = ('all',
-                     'noise',
-                     'P',
-                     'S')
+        variables = ('all', 'noise', 'P', 'S')
+        
         for twin, variable in zip(twins, variables):
             spectrum_variable = dict()
             if len(twin[0]) == 0:
@@ -1339,7 +1344,9 @@ class Event:
         for a in ax:
             for pick in ['P', 'S', 'Pg', 'Sg', 'x1', 'x2', 'x3', 'PP', 'SS']:
                 try:
-                    if pick in self.picks:
+                    if pick in self.picks and \
+                        self.picks_methodid[pick] != PICK_METHOD_ALIGNED:
+                        
                         x = utct(self.picks[pick]) - tref
                         a.axvline(x, c='darkred', ls='dashed')
                         a.annotate(xy=(x, -0.5), text=' ' + pick,
@@ -1347,6 +1354,7 @@ class Event:
                                    horizontalalignment='left')
                 except TypeError:
                     pass
+            
             for pick in ['start', 'end']:
                 a.axvline(utct(self.picks[pick]) - tref,
                           c='darkgreen', ls='dashed')
@@ -1406,12 +1414,18 @@ class Event:
         # print(self.waveforms_SP)
         
         # Reference time
-        if 'P' in self.picks and len(self.picks['P']) > 0:
+        if 'P' in self.picks and len(self.picks['P']) > 0 and \
+            self.picks_methodid['P'] != PICK_METHOD_ALIGNED:
+                
             t_ref = utct(self.picks['P'])
             t_ref_type = 'P'
-        elif 'PP' in self.picks and len(self.picks['PP']) > 0:
+        
+        elif 'PP' in self.picks and len(self.picks['PP']) > 0 and \
+            self.picks_methodid['PP'] != PICK_METHOD_ALIGNED:
+                
             t_ref = utct(self.picks['PP'])
             t_ref_type = 'PP'
+        
         else:
             t_ref = self.starttime
             t_ref_type = 'start time'
@@ -1766,12 +1780,18 @@ class Event:
         freqs = np.geomspace(fmin, fmax + 0.001, nfreqs)
 
         # Reference time
-        if 'P' in self.picks and len(self.picks['P']) > 0:
+        if 'P' in self.picks and len(self.picks['P']) > 0 and \
+            self.picks_methodid['P'] != PICK_METHOD_ALIGNED:
+                
             t_ref = utct(self.picks['P'])
             t_ref_type = 'P'
-        elif 'PP' in self.picks and len(self.picks['PP']) > 0:
+            
+        elif 'PP' in self.picks and len(self.picks['PP']) > 0 and \
+            self.picks_methodid['P'] != PICK_METHOD_ALIGNED:
+            
             t_ref = utct(self.picks['PP'])
             t_ref_type = 'PP'
+        
         else:
             t_ref = self.starttime
             t_ref_type = 'start time'

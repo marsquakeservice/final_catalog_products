@@ -14,11 +14,16 @@ from typing import Union
 
 import matplotlib.pylab as pl
 import matplotlib.ticker
-import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
+
+import numpy as np
+
 from obspy import UTCDateTime as utct
 from obspy.geodetics.base import degrees2kilometers
+
+import psycopg2 as psycopg
+
 from scipy import stats
 from tqdm import tqdm
 
@@ -31,19 +36,34 @@ from mqs_reports.snr import calc_stalta
 from mqs_reports.utils import plot_spectrum, envelope_smooth, pred_spec, solify
 
 
+from marsprocessingtools import utils as marsutils
+
+from singlestationlocator import configuration
+        
+
 PHASE_LIST = [
     'start', 'end', 'P', 'S',  'PP', 'SS',  'Pg', 'Sg', 'Peak_M2.4',
     'Peak_MbP', 'Peak_MbS', 'x1', 'x2', 'x3', 'noise_start', 'noise_end',
     'P_spectral_start', 'P_spectral_end', 'S_spectral_start', 'S_spectral_end',
     'R1', 'G1']
 
+MARS_EVENT_TYPE_SCHEMA = \
+    'http://quakeml.org/vocab/marsquake/1.0/MarsEventType#'
+
+LOCATION_QUALITY_SCHEMA = \
+    'http://quakeml.org/vocab/marsquake/1.0/MarsLocationQualityType#'
+
 
 class Catalog:
     def __init__(self,
                  events=None,
                  fnam_quakeml='catalog.xml',
+                 config_file='',
+                 db=False,
                  quality=('A', 'B', 'C'),
-                 type_select='all'):
+                 type_select='all',
+                 starttime=None,
+                 endtime=None):
         """
         Class to hold catalog of multiple events. Initialized from
         dictionary with Events or QuakeML with Mars extensions.
@@ -57,6 +77,8 @@ class Catalog:
                             "higher" for HF and BB
                             "lower" for LF and BB
         """
+        
+        from mqs_reports.read_BED_Mars import read_DB_Events
         from mqs_reports.read_BED_Mars import read_QuakeML_BED
         
         self.events = []
@@ -64,22 +86,26 @@ class Catalog:
         if events is None:
             if type_select == 'all':
                 type_des = EVENT_TYPES
+                
             elif type_select == 'noSF':
                 type_des = ['HIGH_FREQUENCY',
                             'VERY_HIGH_FREQUENCY',
                             'LOW_FREQUENCY',
-                            'EXTREMELY_BROADBAND',
+                            'WIDEBAND',
                             '2.4_HZ',
                             'BROADBAND']
+                
             elif type_select == 'higher':
                 type_des = ['HIGH_FREQUENCY',
                             'VERY_HIGH_FREQUENCY',
-                            'EXTREMELY_BROADBAND',
+                            'WIDEBAND',
                             'BROADBAND']
+                
             elif type_select == 'lower':
                 type_des = ['LOW_FREQUENCY',
-                            'EXTREMELY_BROADBAND',
+                            'WIDEBAND',
                             'BROADBAND']
+                
             elif isinstance(type_select, str):
                 type_des = [type_select]
             elif isinstance(type_select, tuple):
@@ -92,15 +118,40 @@ class Catalog:
             if quality == 'all':
                 quality = ('A', 'B', 'C', 'D')
                 
+            quality_full = ["{}{}".format(LOCATION_QUALITY_SCHEMA, x) for x \
+                in quality]
+                
             self.types = type_des
+            self.types_full = ["{}{}".format(MARS_EVENT_TYPE_SCHEMA, x) for x \
+                in self.types]
             
-            events_from_xml = read_QuakeML_BED(
-                fnam=fnam_quakeml, event_type=type_des, quality=quality,
-                phase_list=PHASE_LIST)
+            if db is False:
+                events_from_source = read_QuakeML_BED(
+                    fnam=fnam_quakeml, event_type=self.types, quality=quality,
+                    phase_list=PHASE_LIST)
+                
+                print("read {} events from QuakeML".format(
+                    len(events_from_source)))
+                
+            else:
+                
+                config = configuration.Configuration()
+                config.load(config_file)
+    
+                db_connect = marsutils.composeDbConnectString(config)
+                try:
+                    self.conn = psycopg.connect(db_connect)
+                except Exception as e:
+                    error_str = "cannot connect to SC3 database: {}".format(e)
+                    raise RuntimeError(error_str)
+                
+                events_from_source = read_DB_Events(
+                    self.conn, event_type=self.types_full, quality=quality_full,
+                    phase_list=PHASE_LIST, starttime=starttime, endtime=endtime)
+                
+                print("read {} events from DB".format(len(events_from_source)))
             
-            print("read {} events from QuakeML".format(len(events_from_xml)))
-            
-            self.events.extend(events_from_xml)
+            self.events.extend(events_from_source)
         
         else:
             if isinstance(events, Event):
@@ -234,7 +285,8 @@ class Catalog:
             event.load_distance_manual(fnam_csv,
                                        overwrite=overwrite)
 
-    def calc_spectra(self, winlen_sec: float, detick_nfsamp=0, padding=False) -> None:
+    def calc_spectra(
+        self, winlen_sec: float, detick_nfsamp=0, padding=False) -> None:
         """
         Add spectra to each Event object in Catalog.
         Spectra are stored in dictionaries
