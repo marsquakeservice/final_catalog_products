@@ -209,6 +209,8 @@ class Event:
         self.spectra = None
         self.spectra_SP = None
 
+        self.plot_parameters = dict()
+        
         self.fnam_report = dict()
         self.fnam_polarisation = dict()
 
@@ -395,8 +397,128 @@ class Event:
             
         self._waveforms_read = True
         self.kind = 'DISP'
+        
+        # set plot parameters
+        self._set_plot_parameters()
+        
+        
+    def _set_plot_parameters(self):
+        """
+        """
+        
+        print("setting plot parameters")
+        
+        # filterbanks setting per event
+        self.plot_parameters['filterbanks'] = dict()
+        
+        # defaults
+        fmax_LF = 8.0
+        fmin_LF = 1.0 / 32.0
+        fmax_HF = 16.0
+        fmin_HF = 1.0 / 2.0
+        df_LF = 2.0**0.5
+        df_HF = 2.0**0.25
+        
+        # plot method defaults
+        # fmin = 1.0 / 64
+        # fmax = 4.0
+        # df = 2.0**0.5
+        
+        if self.mars_event_type_short in ['LF', 'WB', 'BB']:
+            
+            self.plot_parameters['filterbanks']['instrument'] = 'VBB'
+                
+            if len(self.picks['S']) * len(self.picks['P']) > 0:
+                
+                self.plot_parameters['filterbanks']['t_S'] = utct(
+                    self.picks['S'])
+                self.plot_parameters['filterbanks']['t_P'] = utct(
+                    self.picks['P'])
+            
+            else:
+                self.plot_parameters['filterbanks']['t_S'] = None
+                self.plot_parameters['filterbanks']['t_P'] = utct(
+                    self.starttime)
+            
+            self.plot_parameters['filterbanks']['fmin'] = fmin_LF
+            self.plot_parameters['filterbanks']['fmax'] = fmax_LF
+            self.plot_parameters['filterbanks']['df'] = df_LF
+            
+        elif self.mars_event_type_short in ['HF', '24']:
+            
+            self.plot_parameters['filterbanks']['instrument'] = 'SP'
+            
+            if len(self.picks['Sg']) * len(self.picks['Pg']) > 0:
+                
+                self.plot_parameters['filterbanks']['t_S'] = utct(
+                    self.picks['Sg'])
+                self.plot_parameters['filterbanks']['t_P'] = utct(
+                    self.picks['Pg'])
+                
+            else:
+                self.plot_parameters['filterbanks']['t_S'] = None
+                self.plot_parameters['filterbanks']['t_P'] = utct(
+                    self.starttime)
+            
+            self.plot_parameters['filterbanks']['fmin'] = fmin_HF
+            self.plot_parameters['filterbanks']['fmax'] = fmax_HF
+            self.plot_parameters['filterbanks']['df'] = df_HF
 
+        elif self.mars_event_type_short == 'VF':
+            
+            if self.available_sampling_rates()['SP_Z'] == 100.0:
+                    
+                self.plot_parameters['filterbanks']['instrument'] = 'both'
+                
+                if len(self.picks['Sg']) * len(self.picks['Pg']) > 0:
+                    
+                    self.plot_parameters['filterbanks']['t_S'] = utct(
+                        self.picks['Sg'])
+                    self.plot_parameters['filterbanks']['t_P'] = utct(
+                        self.picks['Pg'])
+                
+                else:
+                    self.plot_parameters['filterbanks']['t_S'] = None
+                    self.plot_parameters['filterbanks']['t_P'] = utct(
+                        self.starttime)
+                
+                self.plot_parameters['filterbanks']['fmin'] = 1.0 / 8.0
+                self.plot_parameters['filterbanks']['fmax'] = 32.0 * np.sqrt(2.0)
+                self.plot_parameters['filterbanks']['df'] = df_HF
+                
+            else:
+                
+                self.plot_parameters['filterbanks']['instrument'] = 'SP'
+                
+                if len(self.picks['Sg']) * len(self.picks['Pg']) > 0:
+                    
+                    self.plot_parameters['filterbanks']['t_S'] = utct(
+                        self.picks['Sg'])
+                    self.plot_parameters['filterbanks']['t_P'] = utct(
+                        self.picks['Pg'])
+                
+                else:
+                    self.plot_parameters['filterbanks']['t_S'] = None
+                    self.plot_parameters['filterbanks']['t_P'] = utct(
+                        self.starttime)
+                    
+                self.plot_parameters['filterbanks']['fmin'] = 1.0 / 8.0
+                self.plot_parameters['filterbanks']['fmax'] = 10.0
+                self.plot_parameters['filterbanks']['df'] = df_HF
 
+        else: 
+            
+            # Super High Frequency
+            self.plot_parameters['filterbanks']['instrument'] = 'SP'
+            
+            self.plot_parameters['filterbanks']['t_S'] = None
+            self.plot_parameters['filterbanks']['t_P'] = utct(self.starttime)
+            
+            self.plot_parameters['filterbanks']['fmin'] = 0.5
+            self.plot_parameters['filterbanks']['fmax'] = 32.0 * np.sqrt(2.0)
+            self.plot_parameters['filterbanks']['df'] = df_HF
+    
+    
     def add_rotated_traces(self):
         
         # Add rotated phases to waveform objects
@@ -658,10 +780,13 @@ class Event:
                                     self.picks['start'])
 
     def available_sampling_rates(self):
+        
         available = dict()
+        
         channels = {'VBB_Z': '??Z',
                     'VBB_N': '??N',
                     'VBB_E': '??N'}
+        
         for chan, seed in channels.items():
             if self.waveforms_VBB is None:
                 available[chan] = 0.0
@@ -699,6 +824,7 @@ class Event:
                         available[chan] = None
 
         return available
+
 
     def calc_spectra(self, winlen_sec, detick_nfsamp=0, padding=True):
         """
@@ -1361,9 +1487,9 @@ class Event:
 
 
     def plot_filterbank(self,
-                        fmin: float=1.0/64,
-                        fmax: float=4.0,
-                        df: float=2**0.5,
+                        fmin: float=None,
+                        fmax: float=None,
+                        df: float=None,
                         log: bool=False,
                         waveforms: bool=False,
                         normwindow: str='all',
@@ -1373,7 +1499,7 @@ class Event:
                         timemarkers: dict=None,
                         starttime: obspy.UTCDateTime=None,
                         endtime: obspy.UTCDateTime=None,
-                        instrument: str='VBB',
+                        instrument: str=None,
                         f_VBB_SP_transition=7.5,
                         station_code: str='ELYSE',
                         location_code: str='02',
@@ -1403,7 +1529,19 @@ class Event:
         fig, ax = plt.subplots(nrows=1, ncols=3, sharex='all', sharey='all',
                                figsize=(10, 6))
 
+        if instrument is None:
+            instrument = self.plot_parameters['filterbanks']['instrument']
+        
         # Determine frequencies
+        if fmin is None:
+            fmin = self.plot_parameters['filterbanks']['fmin']
+            
+        if fmax is None:
+            fmax = self.plot_parameters['filterbanks']['fmax']
+ 
+        if df is None:
+            df = self.plot_parameters['filterbanks']['df']                
+        
         nfreqs = int(np.round(np.log(fmax / fmin) / np.log(df), decimals=0) + 1)
         freqs = np.geomspace(fmin, fmax + 0.001, nfreqs)
         
@@ -1522,8 +1660,9 @@ class Event:
                         'bandpass', freqmin=f0[ifreq], freqmax=f1[ifreq], 
                         corners=FILTERBANK_CORNERS_COUNT)
             
-            except ValueError as e:  
+            except ValueError as e:
                 # If f0 is above Nyquist
+                # TODO(fab): this triggers for all high frequency events
                 print("Filter error, no 20sps data available for event {}: "\
                     "{}".format(self.name, e))
                 skip_freq_bin = True
@@ -1853,8 +1992,10 @@ class Event:
                     #                freqmin=f0, freqmax=f1,
                     #                zerophase=zerophase,
                     #                corners=corners)
+            
             except ValueError:  # If f0 is above Nyquist
                 print('No 20sps data available for event %s' % self.name)
+            
             else:
                 st_filt.trim(starttime=utct(starttime),
                              endtime=utct(endtime))

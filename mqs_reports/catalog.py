@@ -1132,89 +1132,28 @@ class Catalog:
         for event_name, fnam in result_list_tqdm:
             self.select(name=event_name).events[0].fnam_report = fnam
 
+
     def plot_filterbanks(self,
-                         dir_out: str = 'filterbanks',
-                         annotations: Annotations = None,
-                         instrument: str = None,
-                         fmax_LF: float = 8.,
-                         fmin_LF: float = 1. / 32.,
-                         fmax_HF: float = 16.,
-                         fmin_HF: float = 1. / 2.,
-                         df_LF: float = 2. ** 0.5,
-                         df_HF: float = 2. ** 0.25
-                         ):
+                         dir_out: str='filterbanks',
+                         annotations: Annotations=None):
 
         for event in tqdm(self, file=stdout):
-            if event.mars_event_type_short in ['LF', 'XB', 'BB']:
-                if instrument is None:
-                    instrument = 'VBB'
-                if len(event.picks['S']) * len(event.picks['P']) > 0:
-                    t_S = utct(event.picks['S'])
-                    t_P = utct(event.picks['P'])
-                else:
-                    t_P = utct(event.starttime)
-                    t_S = None
-                fmin = fmin_LF
-                fmax = fmax_LF
-                df = df_LF
-            elif event.mars_event_type_short in ['HF', '24']:
-                if instrument is None:
-                    instrument = 'SP'
-                if len(event.picks['Sg']) * len(event.picks['Pg']) > 0:
-                    t_S = utct(event.picks['Sg'])
-                    t_P = utct(event.picks['Pg'])
-                else:
-                    t_P = utct(event.starttime)
-                    t_S = None
-                fmin = fmin_HF
-                fmax = fmax_HF
-                df = df_HF
-
-            elif event.mars_event_type_short == 'VF':
-                if event.available_sampling_rates()['SP_Z'] == 100.:
-                    if instrument is None:
-                        instrument = 'both'
-                    if len(event.picks['Sg']) * len(event.picks['Pg']) > 0:
-                        t_S = utct(event.picks['Sg'])
-                        t_P = utct(event.picks['Pg'])
-                    else:
-                        t_P = utct(event.starttime)
-                        t_S = None
-                    fmin = 1./8.
-                    fmax = 32.0 * np.sqrt(2.)
-                    df = df_HF
-                else:
-                    if instrument is None:
-                        instrument = 'SP'
-                    if len(event.picks['Sg']) * len(event.picks['Pg']) > 0:
-                        t_S = utct(event.picks['Sg'])
-                        t_P = utct(event.picks['Pg'])
-                    else:
-                        t_P = utct(event.starttime)
-                        t_S = None
-                    fmin = 1./8.
-                    fmax = 10.
-                    df = df_HF
-
-            else: # Super High Frequency
-                if instrument is None:
-                    instrument = 'SP'
-                t_P = utct(event.starttime)
-                t_S = None
-                fmin = 0.5
-                fmax = 32.0 * np.sqrt(2.)
-                df = df_HF
-
+            
             fnam = pjoin(dir_out, event.mars_event_type_short,
                          'filterbank_%s_all.png' % event.name)
+            
             nodata = True
             if not pexists(fnam):
                 try:
-                    event.plot_filterbank(normwindow='all', annotations=annotations,
-                                          starttime=event.starttime - 300.,
-                                          endtime=event.endtime + 300.,
-                                          instrument=instrument,
-                                          fnam=fnam, fmin=fmin, fmax=fmax, df=df)
+                    
+                    # event.plot_parameters['filterbanks']['fmin']
+                    event.plot_filterbank(
+                        normwindow='all', 
+                        annotations=annotations,
+                        starttime=event.starttime - 300.0,
+                        endtime=event.endtime + 300.0,
+                        fnam=fnam)
+                
                 except IndexError as err:
                     print(f'Problem with filterbank for event {event.name}')
                     print(err)
@@ -1229,32 +1168,34 @@ class Catalog:
                              'filterbank_%s_zoom.png' % event.name)
                 try:
                     if not pexists(fnam):
-                        event.plot_filterbank(starttime=t_P - 300.,
-                                              endtime=t_P + 1100.,
-                                              normwindow='S',
-                                              annotations=annotations,
-                                              tmin_plot=-240., tmax_plot=900.,
-                                              fnam=fnam,
-                                              instrument=instrument,
-                                              fmin=fmin, fmax=fmax, df=df)
+                        event.plot_filterbank(
+                            starttime=event.plot_parameters['filterbanks']['t_P'] - 300.0,
+                            endtime=event.plot_parameters['filterbanks']['t_P'] + 1100.0,
+                            normwindow='S',
+                            annotations=annotations,
+                            tmin_plot=-240.0, tmax_plot=900.0,
+                            fnam=fnam)
 
-                    if t_S is not None:
+                    if event.plot_parameters['filterbanks']['t_S'] is not None:
                         fnam = pjoin(dir_out, event.mars_event_type_short,
                                      'filterbank_%s_phases.png' % event.name)
+                        
                         if not pexists(fnam):
-                            event.plot_filterbank(starttime=t_P - 120.,
-                                                  endtime=t_S + 240.,
-                                                  normwindow='S',
-                                                  annotations=annotations,
-                                                  tmin_plot=-50.,
-                                                  tmax_plot=t_S - t_P + 200.,
-                                                  fnam=fnam,
-                                                  instrument=instrument,
-                                                  fmin=fmin, fmax=fmax, df=df)
+                            event.plot_filterbank(
+                                starttime=event.plot_parameters['filterbanks']['t_P'] - 120.0,
+                                endtime=event.plot_parameters['filterbanks']['t_S'] + 240.0,
+                                normwindow='S',
+                                annotations=annotations,
+                                tmin_plot=-50.0,
+                                tmax_plot=event.plot_parameters['filterbanks']['t_S'] - event.plot_parameters['filterbanks']['t_P'] + 200.0,
+                                fnam=fnam)
+                            
                 except IndexError as err:
                     print(f'Problem with filterbank for event {event.name}')
                     print(err)
+                    
             plt.close()
+
 
     def plot_spectra(self,
                      ymin: float = -240.,
