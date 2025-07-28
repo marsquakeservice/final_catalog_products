@@ -57,13 +57,17 @@ def calc_stalta(event: Event,
     if event.waveforms_VBB is None:
         return 0.0
     else:
-        tr_stalta = event.waveforms_VBB.select(channel='B?Z')[0].copy()
+        tr_stalta = event.waveforms_VBB.select(channel='??Z')[0].copy()
         tr_stalta.differentiate()
         tr_stalta.filter('bandpass', freqmin=fmin, freqmax=fmax, corners=6,
                          zerophase=True)
         nsta = len_sta * tr_stalta.stats.sampling_rate
         nlta = len_lta * tr_stalta.stats.sampling_rate
-        chf = classic_sta_lta(tr_stalta, nlta=nlta, nsta=nsta)
+        try:
+            chf = classic_sta_lta(tr_stalta, nlta=nlta, nsta=nsta)
+        except Exception as e:
+            print('Cannot compute stalta for event %s: %s' % (event.name,e))
+            return 0.0
         tr_stalta.data = chf
 
         #plt.plot(tr_stalta.times() + float(tr_stalta.stats.starttime),

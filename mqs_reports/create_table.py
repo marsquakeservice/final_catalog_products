@@ -19,6 +19,10 @@ from tqdm import tqdm
 from mqs_reports.snr import calc_SNR, calc_stalta
 from mqs_reports.utils import solify
 
+from fitter import Fitter, plot_spectra
+
+import json
+import glob
 
 def create_row_header(list):
     row = '    <tr>\n'
@@ -28,13 +32,16 @@ def create_row_header(list):
     return row
 
 
-def create_row(list, fmts=None, extras=None):
+def create_row(list, event=None, fmts=None, extras=None):
     if fmts is None:
         fmts = []
         for i in range(len(list)):
             fmts.append('%s')
-    row = 4 * ' ' + '<tr>\n'
-    ind_string = 6 * ' '
+    if event is None:
+        row = '    <tr>\n'
+    else:
+        row = '    <tr id="ev_row_type_%s_quality_%s_name_%s">\n' % (event.mars_event_type_short, event.quality, event.name)
+    ind_string = '      '
     if extras is None:
         for li, fmt in zip(list, fmts):
             if li is None:
@@ -47,18 +54,15 @@ def create_row(list, fmts=None, extras=None):
                 row += ind_string + '<td>-</td>\n'
             else:
                 if extra is None:
-                    row += ind_string + '<td>' + fmt % (li) + \
-                           '</td>\n'
+                    row += ind_string + '<td>' + fmt % (li) + '</td>\n'
                 else:
                     try:
                         row += ind_string \
-                               + '<td sorttable_customkey="%d">' % (extra * 100) \
-                               + fmt % (li) + '</td>\n'
+                               + '<td sorttable_customkey="%d">' % (extra * 100) + fmt % (li) + '</td>\n'
                     except(ValueError):
-                        row += ind_string + '<td sorttable_customkey=-100000>' + \
-                               fmt % (li) + '</td>\n'
+                        row += ind_string + '<td sorttable_customkey=-100000>' + fmt % (li) + '</td>\n'
 
-    row += 4 * ' ' + '</tr>\n'
+    row += '    </tr>\n'
     return row
 
 
@@ -66,10 +70,50 @@ def add_information():
     string = '<H2>Distance types: &dagger;: alignment, *: Pg/Sg based; GUI-based otherwise</H2><br>\n\n'
     return string
 
+def add_event_count_table(catalog):
+    df = catalog.get_event_count_table(style='dataframe')
+    html = ('<H1>MQS events until %s</H1>\n<br>\n' %
+        utct().strftime('%Y-%m-%dT%H:%M (UTC)') )
+    html += '''
+<table border="1" class="dataframe" id="events_all">
+  <thead>
+    <tr style="text-align: right;">
+      <th style="min-width: 40px;">event type</th>
+      <th style="min-width: 40px;">abbr.</th>
+      <th style="min-width: 40px;">total</th>
+      <th style="min-width: 40px;"><input type="checkbox" id="cb_event_quality_A" onclick="eventFilteringToggle();" checked >A</th>
+      <th style="min-width: 40px;"><input type="checkbox" id="cb_event_quality_B" onclick="eventFilteringToggle();" checked >B</th>
+      <th style="min-width: 40px;"><input type="checkbox" id="cb_event_quality_C" onclick="eventFilteringToggle();" checked >C</th>
+      <th style="min-width: 40px;"><input type="checkbox" id="cb_event_quality_D" onclick="eventFilteringToggle();" checked >D</th>
+    </tr>
+  </thead>
+  <tbody>
+'''
+    for index, row in df.iterrows():
+        checked = 'checked' if row['abbr.'] != 'SF' else ''
+        html +='''
+    <tr>
+      <td>%s</td>
+      <td><input type="checkbox" id="%s" onclick="eventFilteringToggle();" %s>%s</td>
+      <td>%d</td>
+      <td>%d</td>
+      <td>%d</td>
+      <td>%d</td>
+      <td>%d</td>
+    </tr>
+''' % (row['event type'], f"cb_event_type_{row['abbr.']}", checked, row['abbr.'],
+      row['total'], row['A'], row['B'], row['C'], row['D'])
+
+    html += '''
+  </tbody>
+</table>
+'''
+    return html
+
 
 def write_html(catalog, fnam_out, magnitude_version):
     output = create_html_header()
-    output += catalog.get_event_count_table()
+    output += add_event_count_table(catalog)
     output += add_information()
     output += create_table_head(
         column_names=(' ',
@@ -96,8 +140,8 @@ def write_html(catalog, fnam_out, magnitude_version):
                       'f<sub>c</sub><br>[Hz]',
                       't*<br>[s]',
                       'VBB<br>rate',
-                      '100sps<br> SP1',
-                      '100sps<br> SPH'))
+                      'SP1<br>rate',
+                      'SPH<br>rate'))
     output_error = create_table_head(
         table_head='Events with errors',
         column_names=(' ',
@@ -138,17 +182,15 @@ def write_html(catalog, fnam_out, magnitude_version):
                       '24': 4,
                       'VF': 5,
                       'SF': 6,
-                      'XB': 7}
+                      'WB': 7}
     ievent = len(catalog)
     print('Filling HTML table with event entries')
     error_events = False
     for event in tqdm(catalog, file=stdout):
         picks_check = check_picks(ievent, event)
         if picks_check is not None:
-            row = '<tr> ' + picks_check + '</tr>\n'
-            output_error += row
+            output_error += '<tr> ' + picks_check + '</tr>\n'
             error_events = True
-
         else:
             try:
                 row = create_event_row(dist_string,
@@ -160,21 +202,21 @@ def write_html(catalog, fnam_out, magnitude_version):
                                        ievent,
                                        magnitude_version=magnitude_version)
             except (KeyError, IndexError) as e:
-                print('Problem with event %s (%s-%s):' %
-                      (event.name, event.mars_event_type_short, event.quality))
-
-                print(e)
-                print(event.picks)
-                print(event.amplitudes)
-                # raise e
+                print('Problem with event %s (%s-%s): %s' %
+                      (event.name, event.mars_event_type_short, event.quality, e))
+                error_row = '<td>%d</td>\n <td>%s</td>\n' % (ievent, event.name)
+                error_row += '<td>%s</td>\n <td>%s</td>\n' % (event.mars_event_type_short, event.quality)
+                error_row += '<td></td>\n <td></td>\n'
+                output_error += '<tr> ' + error_row + '</tr>\n'
+                error_events = True
+                #raise
             else:
                 output += row
         ievent -= 1
     footer = create_footer()
     output += footer
     if error_events:
-        output_error += 4 * ' ' + '</tbody>\n </table>'
-        output += output_error
+        output += output_error + '    </tbody>\n </table>'
     with open(fnam_out, 'w') as f:
         f.write(output)
 
@@ -195,30 +237,42 @@ def check_picks(ievent, event):
                 missing_picks.append(pick)
 
     mandatory_LF_ABC = ['Peak_MbP']
-    if event.quality in ['A', 'B', 'C'] and event.mars_event_type_short in ['LF', 'XB', 'BB']:
+    if event.quality in ['A', 'B', 'C'] and event.mars_event_type_short in ['LF', 'WB', 'BB']:
         for pick in mandatory_LF_ABC:
             if pick not in event.picks or event.picks[pick] == '':
                 missing_picks.append(pick)
 
     mandatory_LF_AB = ['P', 'S', 'S_spectral_start', 'S_spectral_end', 'Peak_MbS']
     mandatory_LF_AB_alt = ['PP', 'SS']
-    if event.quality in ['A', 'B'] and event.mars_event_type_short in ['LF', 'XB', 'BB']:
+    if event.quality in ['A', 'B'] and event.mars_event_type_short in ['LF', 'WB', 'BB']:
         for pick in mandatory_LF_AB:
             if pick not in event.picks or event.picks[pick] == '':
                 missing_picks.append(pick)
 
     if 'P' in missing_picks and 'PP' in event.picks:
-        print('no P, but I found a PP')
+        #print('no P, but I found a PP')
         missing_picks.remove('P')
 
     if 'S' in missing_picks and 'SS' in event.picks:
-        print('no S, but I found a SS')
+        #print('no S, but I found a SS')
         missing_picks.remove('S')
 
     mandatory_HF_ABC = ['Pg', 'Sg', 'S_spectral_start', 'S_spectral_end', 'Peak_M2.4']
     if event.quality in ['A', 'B', 'C'] and event.mars_event_type_short in ['HF', 'VF', '24']:
         for pick in mandatory_HF_ABC:
             if pick not in event.picks or event.picks[pick] == '':
+
+                # Pg/Sg re-labeled as P/S for VF and some HF events
+                if event.mars_event_type_short in ['HF', 'VF']:
+                    if pick == 'Pg':
+                        if 'P' in event.picks and event.picks['P']:
+                            continue
+                        missing_picks.append('P')
+                    elif pick == 'Sg':
+                        if 'S' in event.picks and event.picks['S']:
+                            continue
+                        missing_picks.append('S')
+
                 missing_picks.append(pick)
 
     pairs = [['P_spectral_start', 'P_spectral_end'],
@@ -252,7 +306,7 @@ def create_event_row(dist_string, time_string, baz_string,
                      ievent,
                      magnitude_version='Giardini2020',
                      path_images_local='/usr/share/nginx/html/InSight_plots',
-                     path_images='http://mars.ethz.ch/InSight_plots'):
+                     path_images='../'):
 
     if event.origin_time == '':
         origin_time = '-'
@@ -264,50 +318,75 @@ def create_event_row(dist_string, time_string, baz_string,
     duration = '%3d:%02d' % (float(event.duration) / 60, float(event.duration) % 60) #.strftime('%M:%S')
     event.fnam_report['name'] = event.name
     event.fnam_report['summary_local'] = pjoin(path_images_local,
-                                               'event_summary',
+                                               'summary',
                                                '%s_event_summary.png' %
                                                event.name)
     event.fnam_report['summary'] = pjoin(path_images,
-                                         'event_summary',
+                                         'summary',
                                          '%s_event_summary.png' %
                                          event.name)
     event.fnam_report['pol'] = pjoin(path_images,
-                                     'pol_plots',
+                                     'polarization',
                                      '%s.png' %
                                      event.name)
     event.fnam_report['pol_zoom'] = pjoin(path_images,
-                                          'pol_plots',
-                                          '%s_zoom.png' %
+                                          'polarization', 'zoom',
+                                          '%s.png' %
                                           event.name)
     event.fnam_report['pol_polar'] = pjoin(path_images,
-                                          'pol_plots',
-                                          '%s_polarPlots.png' %
+                                          'polarization', 'polar',
+                                          '%s.png' %
                                           event.name)
     event.fnam_report['pol_local'] = pjoin(path_images_local,
-                                           'pol_plots',
+                                           'polarization',
                                            '%s.png' %
                                            event.name)
     event.fnam_report['pol_zoom_local'] = pjoin(path_images_local,
-                                                'pol_plots',
-                                                '%s_zoom.png' %
+                                                'polarization', 'zoom',
+                                                '%s.png' %
                                                 event.name)
     event.fnam_report['pol_polar_local'] = pjoin(path_images_local,
-                                                'pol_plots',
-                                                '%s_polarPlots.png' %
+                                                'polarization', 'polar',
+                                                '%s.png' %
                                                 event.name)
-    event.fnam_report['fb_local'] = pjoin(path_images_local,
-                                          'filterbanks',
-                                          event.mars_event_type_short,
-                                          'filterbank_%s_all.png' %
-                                          event.name)
-    event.fnam_report['fb'] = pjoin(path_images,
-                                    'filterbanks',
-                                    event.mars_event_type_short,
-                                    'filterbank_%s_all.png' %
-                                    event.name)
+    sp_files  = glob.glob( pjoin('filterbanks', event.name, f'*SampRate_SP_HF*.png') )
+    lfhf_files  = glob.glob( pjoin('filterbanks', event.name, f'*SampRate_LF+HF*.png') )
+    zrt_files  = glob.glob( pjoin('filterbanks', event.name, f'*Rotation_ZRT*.png') )
+    deglitched_files = glob.glob( pjoin('filterbanks', event.name, f'*DEGLITCHED*.png') )
+    denoised_files   = glob.glob( pjoin('filterbanks', event.name, f'*DENOISED*.png') )
+    zoom_in_files   = glob.glob( pjoin('filterbanks', event.name, f'*Zoom_in*.png') )
+    zoom_ph_files   = glob.glob( pjoin('filterbanks', event.name, f'*Zoom_phases*.png') )
+    url_vars = ('eventId=%s&hasSP=%s&hasLFHF=%s&hasRT%s&hasDeglitched=%s&hasDenoised=%s&hasZoomIn=%s&hasZoomPh=%s' %
+                (event.name,
+                 'yes' if len(sp_files) != 0 else 'no',
+                 'yes' if len(lfhf_files) != 0 else 'no',
+                 'yes' if len(zrt_files) != 0 else 'no',
+                 'yes' if len(deglitched_files) != 0 else 'no',
+                 'yes' if len(denoised_files) != 0 else 'no',
+                 'yes' if len(zoom_in_files) != 0 else 'no',
+                 'yes' if len(zoom_ph_files) != 0 else 'no'
+                 )
+                )
+    event.fnam_report['fb'] = ('filterbanks.html?%s' % url_vars)
+
+    sp_files  = glob.glob( pjoin('spect', event.name, f'*SampRate_SP_HF*.png') )
+    lfhf_files  = glob.glob( pjoin('spect', event.name, f'*SampRate_LF+HF*.png') )
+    zrt_files  = glob.glob( pjoin('spect', event.name, f'*Component_T*.png') )
+    deglitched_files = glob.glob( pjoin('spect', event.name, f'*DEGLITCHED*.png') )
+    denoised_files   = glob.glob( pjoin('spect', event.name, f'*DENOISED*.png') )
+    url_vars = ('eventId=%s&hasSP=%s&hasLFHF=%s&hasRT%s&hasDeglitched=%s&hasDenoised=%s' %
+                (event.name,
+                 'yes' if len(sp_files) != 0 else 'no',
+                 'yes' if len(lfhf_files) != 0 else 'no',
+                 'yes' if len(zrt_files) != 0 else 'no',
+                 'yes' if len(deglitched_files) != 0 else 'no',
+                 'yes' if len(denoised_files) != 0 else 'no'
+                 )
+                )
+    event.fnam_report['spect'] = ('spect.html?%s' % url_vars)
+
     path_dailyspec = pjoin(path_images,
-                           'spectrograms/by_channels/02.BHZ/',
-                           'Sol%04d.Spectrogram_LF-02.BHZ__HF-02.BHZ.png'
+                           'spectrograms/by_sols/Sol%04d/0imageviewer.html'
                            % int(float(solify(event.starttime)) / 86400 + 1))
     # try:
     if event.mars_event_type_short in ('HF', 'VF', '24'):
@@ -360,23 +439,15 @@ def create_event_row(dist_string, time_string, baz_string,
                None
                )
     # They never exist locally, since Savas creates them manually
-    # if pexists(event.fnam_report['summary_local']):
-    if (event.mars_event_type_short in ('LF', 'XB', 'BB') and
-        event.quality in ('A', 'B', 'C')) or \
-       (event.mars_event_type_short in ('VF', 'HF') and
-        event.quality in ('A', 'B')):
+    if pexists(event.fnam_report['summary_local']):
         link_report = \
             ('<a href="{summary:s}" target="_blank">{name:s}</a><br>' +
-             '<a href="{Z:s}.html" target="_blank">Z</a> ' +
-             '<a href="{N:s}.html" target="_blank">N</a> ' +
-             '<a href="{E:s}.html" target="_blank">E</a>').format(
+             '<a href="{spect:s}" target="_blank">Spect</a>').format(
                 **event.fnam_report)
     else:
         link_report = \
             ('{name:s}<br>' +
-             '<a href="{Z:s}.html" target="_blank">Z</a> ' +
-             '<a href="{N:s}.html" target="_blank">N</a> ' +
-             '<a href="{E:s}.html" target="_blank">E</a>').format(
+             '<a href="{spect:s}" target="_blank">Spect</a>').format(
                 **event.fnam_report)
     if pexists(event.fnam_report['pol_local']):
         link_report += ' <a href="{pol:s}" target="_blank">Pol</a>'.format(
@@ -398,7 +469,7 @@ def create_event_row(dist_string, time_string, baz_string,
          link_lmst,
          link_duration,
          dist_string[event.distance_type].format(event),
-         baz_string[event.quality].format(event, **event.fnam_report),
+         (" " if event.baz is None else "%.f"%event.baz), #baz_string[event.quality].format(event, **event.fnam_report),
          snr_string,
          event.pick_amplitude('Peak_MbP',
                               comp='vertical',
@@ -416,7 +487,7 @@ def create_event_row(dist_string, time_string, baz_string,
          (event.amplitudes['A0']
           if event.amplitudes['A0'] is not None else None,
           event.amplitudes['A0_err']
-          if event.amplitudes['A0_err'] is not None else None),
+          if 'A0_err' in event.amplitudes and event.amplitudes['A0_err'] is not None else None),
          event.magnitude(mag_type='mb_P', version=magnitude_version)[0],
          event.magnitude(mag_type='mb_S', version=magnitude_version)[0],
          event.magnitude(mag_type='m2.4', version=magnitude_version)[0],
@@ -424,10 +495,13 @@ def create_event_row(dist_string, time_string, baz_string,
          event.magnitude(mag_type='Mw', version=magnitude_version),
          event.amplitudes['f_c'],
          event.amplitudes['tstar'],
-         event.available_sampling_rates()['VBB_Z'],
-         _fmt_bool(event.available_sampling_rates()['SP_Z'] == 100.),
-         _fmt_bool(event.available_sampling_rates()['SP_N'] == 100.),
+         (_replace_none(event.available_sampling_rates()['VBB_Z'])
+             if event.available_sampling_rates()['VBB100_Z'] is None
+             else event.available_sampling_rates()['VBB100_Z']),
+         _replace_none(event.available_sampling_rates()['SP_Z']),
+         _replace_none(event.available_sampling_rates()['SP_N']),
          ),
+        event,
         extras=sortkey,
         fmts=formats)
 
@@ -460,27 +534,60 @@ def create_footer():
     return footer
 
 
-def _fmt_bool(bool):
-    if bool:
-        return '&#9745;'
-    else:
-        return ' '
-
+def _replace_none(val):
+    return ' ' if val is None else val
 
 def create_html_header():
-    header = '<!DOCTYPE html>\n' + \
-             '<html lang="en-US">\n' + \
-             '<head>\n' + \
-             '  <script src="sorttable.js"></script>\n' + \
-             '  <title>MQS events until %s</title>\n' % utct().date + \
-             '  <meta charset="UTF-8">\n' + \
-             '  <meta name="description" content="InSight marsquakes">\n' + \
-             '  <meta name="author" content="Marsquake Service" >\n' + \
-             '  <link rel="stylesheet" type="text/css" href="./table.css">\n' + \
-             '</head>\n' + \
-             '<body>\n'
-    output = header
-    return output
+    return '''
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+  <script src="sorttable.js"></script>
+  <title>MQS events</title>
+  <meta charset="UTF-8">
+  <meta name="description" content="InSight marsquakes">
+  <meta name="author" content="Marsquake Service" >
+  <link rel="stylesheet" type="text/css" href="./table.css">
+</head>
+<body>
+
+<script>
+
+eventFilteringToggle();
+
+function eventFilteringToggle() {
+
+  var evTypes=["SF","VF","WB","BB","LF","HF","24"];
+  var evQs=["A","B","C","D"];
+
+  for (var  t= 0; t < evTypes.length; t++) {
+    for (var q = 0; q < evQs.length; q++) {
+
+      var evType    = evTypes[t];
+      var evQuality = evQs[q];
+
+      var cbEvType = document.getElementById(`cb_event_type_${evType}`);
+      var cbEvQuality = document.getElementById(`cb_event_quality_${evQuality}`);
+
+      var enabled = ((cbEvType !== null ? cbEvType.checked : true) &&
+                     (cbEvQuality !== null ? cbEvQuality.checked : true));
+
+      var idPrefix=`ev_row_type_${evType}_quality_${evQuality}`;
+
+      var evRows = document.querySelectorAll(`tr[id^='${idPrefix}']`);
+
+      evRows.forEach((row) => {
+          if (enabled) {
+              row.style.display="table-row";
+          } else {
+              row.style.display="none";
+          }
+      });
+    }
+  }
+}
+</script>
+'''
 
 
 def create_table_head(column_names, table_head='Event table'):
@@ -511,11 +618,18 @@ def define_arguments():
     helptext = 'Input manual distance file'
     parser.add_argument('input_dist', help=helptext)
 
+    helptext = 'Input fitting parameter file (marsspectgui)'
+    parser.add_argument('input_fitparams', help=helptext)
+
+    helptext = 'Input default fitting parameter file (marsspectgui)'
+    parser.add_argument('input_fitparams_default', help=helptext)
+
     helptext = 'Inventory file'
     parser.add_argument('inventory', help=helptext)
 
     helptext = 'Path to SC3DIR'
     parser.add_argument('sc3_dir', help=helptext)
+
 
     helptext = 'Location qualities (one or more)'
     parser.add_argument('-q', '--quality', help=helptext,
@@ -533,6 +647,14 @@ def define_arguments():
     parser.add_argument('-t', '--types', help=helptext,
                         default='all')
 
+    helptext = 'Single plot: all, filterbanks, spectral-fit, table'
+    parser.add_argument('-p', '--plot', help=helptext,
+                        default='all')
+
+    helptext = 'Data type: RAW, DEGLITCHED, DENOISED'
+    parser.add_argument('--data-type', help=helptext,
+                        default='RAW')
+
     return parser.parse_args()
 
 
@@ -540,7 +662,6 @@ if __name__ == '__main__':
     from mqs_reports.catalog import Catalog
     from mqs_reports.annotations import Annotations
     import warnings
-
 
     args = define_arguments()
     catalog = Catalog(fnam_quakeml=args.input_quakeml,
@@ -559,19 +680,42 @@ if __name__ == '__main__':
     inv = obspy.read_inventory(args.inventory)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        print('Read waveforms')
-        catalog.read_waveforms(inv=inv, kind='DISP', sc3dir=args.sc3_dir)
-    print('Calc spectra')
-    catalog.calc_spectra(winlen_sec=20., detick_nfsamp=10)
+        print('Read %s waveforms' % args.data_type)
+        catalog.read_waveforms(inv=inv, wf_type=args.data_type,
+                               kind='DISP', sc3dir=args.sc3_dir)
 
-    ##  print('Plot filter banks')
-    ##  catalog.plot_filterbanks(dir_out='filterbanks', annotations=ann)
+    if 'all' in args.plot or 'filterbanks' in args.plot:
+        for smprate in ('VBB_LF', 'SP_HF', 'LF+HF'):
+            for rotate in (False, True):
+                for normtype in ('none', 'single_component', 'all_components'):
+                    print('Plot filter banks (smprate=%s, norm=%s, ZRT=%s)'
+                          % (smprate, normtype, rotate))
+                    catalog.plot_filterbanks(dir_out='filterbanks', annotations=ann,
+                                             normtype=normtype, rotate=rotate,
+                                             smprate=smprate)
 
-    ##  print('Plot polarisation analysis')
-    ##  catalog.plot_polarisation_analysis(dir_out='pol_plots')
+    if 'all' in args.plot or 'spectral-fit' in args.plot:
+        with open(args.input_fitparams) as json_data:
+            fitting_parameters = json.load(json_data)
+        with open(args.input_fitparams_default) as json_data:
+            fitting_parameters_defaults = json.load(json_data)
+        fitter = Fitter(catalog=catalog, inventory=inv, path_sc3dir=args.sc3_dir)
+        for smprate in ('VBB_LF', 'SP_HF', 'LF+HF'):
+            for rotate in (False, True):
+                print('Plot spectra (smprate=%s, ZRT=%s)'
+                          % (smprate, rotate))
+                plot_spectra(
+                        fitter=fitter,
+                        fitting_parameters=fitting_parameters,
+                        fitting_parameters_defaults=fitting_parameters_defaults,
+                        dir_out='spect',
+                        winlen_sec=20.,
+                        wf_type=args.data_type,
+                        rotate=rotate, smprate=smprate
+                )
 
-    print('Make magnitude reports')
-    catalog.make_report_parallel(dir_out='reports', annotations=ann)
-
-    print('Create table')
-    catalog.write_table(fnam_out=fnam_out, magnitude_version=args.mag_version)
+    if 'all' in args.plot or 'table' in args.plot:
+        print('Calc spectra') # to be called only on RAW data
+        catalog.calc_spectra(winlen_sec=20., detick_nfsamp=10)
+        print('Create table')
+        write_html(catalog, fnam_out=fnam_out, magnitude_version=args.mag_version)

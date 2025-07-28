@@ -38,8 +38,7 @@ LANDER_LON = 135.6234
 EVENT_TYPES_SHORT = {
     'SUPER_HIGH_FREQUENCY': 'SF',
     'VERY_HIGH_FREQUENCY': 'VF',
-    'EXTREMELY_BROADBAND': 'XB',
-    'WIDEBAND': 'XB',
+    'WIDEBAND': 'WB',
     'BROADBAND': 'BB',
     'LOW_FREQUENCY': 'LF',
     'HIGH_FREQUENCY': 'HF',
@@ -304,6 +303,7 @@ class Event:
                        inv: obspy.Inventory,
                        sc3dir: str,
                        event_tmp_dir='./events',
+                       wf_type: str = 'RAW', # RAW, DEGLITCHED, DENOISED
                        kind: str = 'DISP',
                        fmin_SP: float = 0.5,
                        fmin_VBB: float = 1. / 30.,
@@ -316,32 +316,18 @@ class Event:
         :param kind: 'DISP', 'VEL' or 'ACC'. Note that many other functions
                      expect the data to be in displacement
         """
-        if not self.read_data_local(dir_cache=event_tmp_dir):
-            self.read_data_from_sc3dir(inv, sc3dir, kind,
+        if not self.read_data_local(wf_type, dir_cache=event_tmp_dir):
+            self.read_data_from_sc3dir(inv, sc3dir, wf_type, kind,
                                        fmin_SP=fmin_SP,
                                        fmin_VBB=fmin_VBB,
                                        tpre_VBB=t_pad_VBB)
-            self.write_data_local(dir_cache=event_tmp_dir)
+            self.write_data_local(wf_type, dir_cache=event_tmp_dir)
 
-        if self.baz is not None:
-            self.add_rotated_traces()
         self._waveforms_read = True
-        self.kind = 'DISP'
+        self.wf_type = wf_type
+        self.kind = kind
 
-    def add_rotated_traces(self):
-        # Add rotated phases to waveform objects
-        st_rot = self.waveforms_VBB.copy()
-        st_rot.rotate('NE->RT', back_azimuth=self.baz)
-        for chan in ['?HT', '?HR']:
-            self.waveforms_VBB += st_rot.select(channel=chan)[0]
-
-        if self.waveforms_SP is not None:
-            st_rot = self.waveforms_SP.copy()
-            st_rot.rotate('NE->RT', back_azimuth=self.baz)
-            for chan in ['?HT', '?HR']:
-                self.waveforms_SP += st_rot.select(channel=chan)[0]
-
-    def read_data_local(self, dir_cache: str = 'events') -> bool:
+    def read_data_local(self, wf_type: str, dir_cache: str = 'events') -> bool:
         """
         Read waveform data from local cache structure
         :param dir_cache: path to local cache
@@ -351,8 +337,9 @@ class Event:
         waveform_path = pjoin(event_path, 'waveforms')
         origin_path = pjoin(event_path, 'origin_id.txt')
         success = False
-        VBB_path = pjoin(waveform_path, 'waveforms_VBB.mseed')
-        SP_path = pjoin(waveform_path, 'waveforms_SP.mseed')
+        VBB_path = pjoin(waveform_path, 'waveforms_VBB_%s.mseed' % wf_type)
+        VBB100_path = pjoin(waveform_path, 'waveforms_VBB100_%s.mseed' % wf_type)
+        SP_path = pjoin(waveform_path, 'waveforms_SP_%s.mseed' % wf_type)
         if len(glob(origin_path)) > 0:
             with open(origin_path, 'r') as f:
                 origin_local = f.readline().strip()
@@ -363,6 +350,12 @@ class Event:
                 else:
                     self.waveforms_VBB = None
 
+                if len(glob(VBB100_path)):
+                    self.waveforms_VBB100 = obspy.read(VBB100_path)
+                    success = True
+                else:
+                    self.waveforms_VBB100 = None
+
                 if len(glob(SP_path)):
                     self.waveforms_SP = obspy.read(SP_path)
                     success = True
@@ -370,7 +363,7 @@ class Event:
                     self.waveforms_SP = None
         return success
 
-    def write_data_local(self, dir_cache: str = 'events'):
+    def write_data_local(self, wf_type: str, dir_cache: str = 'events'):
         """
         Store waveform data in local cache structure
         @TODO: Save parameters (kind, filter) into file name
@@ -386,16 +379,21 @@ class Event:
             f.write(self.origin_publicid)
         if self.waveforms_VBB is not None and len(self.waveforms_VBB) > 0:
             self.waveforms_VBB.write(pjoin(waveform_path,
-                                           'waveforms_VBB.mseed'),
-                                     format='MSEED', encoding='FLOAT64')
+                                           'waveforms_VBB_%s.mseed' % wf_type),
+                                     format='MSEED')
+        if self.waveforms_VBB100 is not None and len(self.waveforms_VBB100) > 0:
+            self.waveforms_VBB100.write(pjoin(waveform_path,
+                                           'waveforms_VBB100_%s.mseed' % wf_type),
+                                     format='MSEED')
         if self.waveforms_SP is not None and len(self.waveforms_SP) > 0:
             self.waveforms_SP.write(pjoin(waveform_path,
-                                          'waveforms_SP.mseed'),
-                                    format='MSEED', encoding='FLOAT64')
+                                          'waveforms_SP_%s.mseed' % wf_type),
+                                    format='MSEED')
 
     def read_data_from_sc3dir(self,
                               inv: obspy.Inventory,
                               sc3dir: str,
+                              wf_type: str,
                               kind: str,
                               fmin_SP=0.5,
                               fmin_VBB=1. / 30.,
@@ -405,12 +403,11 @@ class Event:
         Read waveform data into event object
         :param inv: obspy.Inventory object to use for instrument correction
         :param sc3dir: path to data, in SeisComp3 directory structure
+        :param wf_type: type of preprocessed data to load ('RAW', 'DEGLITCHED', 'DENOISED')
         :param kind: Unit to correct waveform into ('DISP', 'VEL', 'ACC')
         :param tpre_SP: prefetch time for SP data (default: 100 sec)
         :param tpre_VBB: prefetch time for VBB data (default: 900 sec)
         """
-        self.kind = kind
-
         if len(self.picks['noise_start']) > 0:
             twin_start = min((utct(self.picks['start']),
                               utct(self.picks['noise_start'])))
@@ -422,9 +419,38 @@ class Event:
         else:
             twin_end = utct(self.picks['end'])
 
-        filenam_SP_HG = 'XB.ELYSE.65.EH?.D.%04d.%03d'
+        if wf_type == 'RAW':
+            self._read_data_from_sc3dir_raw(inv, sc3dir, kind,
+                                       fmin_SP, fmin_VBB, tpre_SP, tpre_VBB,
+                                       twin_start, twin_end)
+        elif wf_type == 'DEGLITCHED':
+            self._read_data_from_sc3dir_deglitched(inv, sc3dir, kind,
+                                       fmin_SP, fmin_VBB, tpre_SP, tpre_VBB,
+                                       twin_start, twin_end)
+        elif wf_type == 'DENOISED':
+            self._read_data_from_sc3dir_denoised(inv, sc3dir, kind,
+                                       fmin_SP, fmin_VBB, tpre_SP, tpre_VBB,
+                                       twin_start, twin_end)
+
+    def _read_data_from_sc3dir_raw(self,
+                              inv: obspy.Inventory,
+                              sc3dir: str,
+                              kind: str,
+                              fmin_SP: float,
+                              fmin_VBB: float,
+                              tpre_SP: float,
+                              tpre_VBB: float,
+                              twin_start: float,
+                              twin_end: float) -> None:
+        station='ELYSE'
+
+        #
+        # Read SP
+        #
+        # Try for 65.EH? (100sps SP)
+        filenam_SP = 'XB.ELYSE.65.EH?.D.%04d.%03d'
         fnam_SP = create_fnam_event(
-            filenam_inst=filenam_SP_HG,
+            filenam_inst=filenam_SP, station=station,
             sc3dir=sc3dir, time=self.picks['start'])
 
         if len(glob(fnam_SP)) > 0:
@@ -434,75 +460,90 @@ class Event:
                                           twin=[twin_start - tpre_SP,
                                                 twin_end + tpre_SP],
                                           fmin=fmin_SP)
-        else:
-            filenam_SP_HG = 'XB.ELYSE.00.HH?.D.%04d.%03d'
-            fnam_SP = create_fnam_event(
-                filenam_inst=filenam_SP_HG,
-                sc3dir=sc3dir, time=self.picks['start'])
-            if len(glob(fnam_SP)) > 0:
-                self.waveforms_SP = read_data(fnam_SP, inv=inv, kind=kind,
-                                              twin=[twin_start - tpre_SP,
-                                                    twin_end + tpre_SP],
-                                              fmin=fmin_SP)
-            else:
-                filenam_SP_HG = 'XB.ELYSE.65.EH?.D.%04d.%03d'
+            if self.waveforms_SP is not None and \
+                    len(self.waveforms_SP) == 0:
                 self.waveforms_SP = None
 
-        # Try for 02.BH? (20sps VBB)
-        success_VBB = False
-        filenam_VBB_HG = 'XB.ELYSE.02.BH?.D.%04d.%03d'
-        fnam_VBB = create_fnam_event(
-            filenam_inst=filenam_VBB_HG,
+        #
+        # Read VBB 100sps
+        #
+        # Try for 00.HH? (100sps VBB)
+        filenam_VBB100 = 'XB.ELYSE.00.HH?.D.%04d.%03d'
+        fnam_VBB100 = create_fnam_event(
+            filenam_inst=filenam_VBB100, station=station,
             sc3dir=sc3dir, time=self.picks['start'])
-        if len(glob(fnam_VBB)) % 3 == 0:
+        self.waveforms_VBB100 = read_data(fnam_VBB100, inv=inv,
+                                       kind=kind,
+                                       fmin=fmin_VBB,
+                                       twin=[twin_start - tpre_VBB,
+                                             twin_end + tpre_VBB])
+        if self.waveforms_VBB100 is not None and \
+                len(self.waveforms_VBB100) != 3:
+            self.waveforms_VBB100 = None
+
+        #
+        # Read VBB
+        #
+        success_VBB = False
+
+        if not success_VBB:
+            # Try for 02.BH? (20sps VBB)
+            filenam_VBB = 'XB.ELYSE.02.BH?.D.%04d.%03d'
+            fnam_VBB = create_fnam_event(
+                filenam_inst=filenam_VBB, station=station,
+                sc3dir=sc3dir, time=self.picks['start'])
             self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
                                            kind=kind,
                                            fmin=fmin_VBB,
                                            twin=[twin_start - tpre_VBB,
                                                  twin_end + tpre_VBB])
-            if len(self.waveforms_VBB) == 3:
+            if self.waveforms_VBB is not None and \
+                    len(self.waveforms_VBB) == 3:
                 success_VBB = True
 
         if not success_VBB:
             # Try for 03.BH? (10sps VBB)
-            filenam_VBB_HG = 'XB.ELYSE.03.BH?.D.%04d.%03d'
+            filenam_VBB = 'XB.ELYSE.03.BH?.D.%04d.%03d'
             fnam_VBB = create_fnam_event(
-                filenam_inst=filenam_VBB_HG,
+                filenam_inst=filenam_VBB, station=station,
                 sc3dir=sc3dir, time=self.picks['start'])
             self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
                                            kind=kind,
                                            fmin=fmin_VBB,
                                            twin=[twin_start - tpre_VBB,
                                                  twin_end + tpre_VBB])
-            if len(self.waveforms_VBB) == 3:
+            if self.waveforms_VBB is not None and \
+                    len(self.waveforms_VBB) == 3:
                 success_VBB = True
 
         if not success_VBB:
             # Try for 15.BL? (10sps VBB)
-            filenam_VBB_HG = 'XB.ELYSE.15.HL?.D.%04d.%03d'
+            filenam_VBB = 'XB.ELYSE.15.HL?.D.%04d.%03d'
             fnam_VBB = create_fnam_event(
-                filenam_inst=filenam_VBB_HG,
+                filenam_inst=filenam_VBB, station=station,
                 sc3dir=sc3dir, time=self.picks['start'])
             self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
                                            kind=kind,
                                            fmin=fmin_VBB,
                                            twin=[twin_start - tpre_VBB,
                                                  twin_end + tpre_VBB])
-            if len(self.waveforms_VBB) == 3:
+            if self.waveforms_VBB is not None and \
+                    len(self.waveforms_VBB) == 3:
                 success_VBB = True
 
         if not success_VBB:
             # Try for 07.BL? (20sps VBB low gain)
-            filenam_VBB_HG = 'XB.ELYSE.07.BL?.D.%04d.%03d'
+            filenam_VBB = 'XB.ELYSE.07.BL?.D.%04d.%03d'
             fnam_VBB = create_fnam_event(
-                filenam_inst=filenam_VBB_HG,
+                filenam_inst=filenam_VBB, station=station,
                 sc3dir=sc3dir, time=self.picks['start'])
             self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
                                            kind=kind,
                                            fmin=fmin_VBB,
                                            twin=[twin_start - tpre_VBB,
                                                  twin_end + tpre_VBB])
-            if len(self.waveforms_VBB) == 3:
+            if self.waveforms_VBB is not None and \
+                    len(self.waveforms_VBB) == 3:
                 success_VBB = True
 
         if not success_VBB:
@@ -512,50 +553,115 @@ class Event:
             raise FileNotFoundError('Neither SP nor VBB data found on day %s' %
                                     self.picks['start'])
 
+    def _read_data_from_sc3dir_deglitched(self,
+                              inv: obspy.Inventory,
+                              sc3dir: str,
+                              kind: str,
+                              fmin_SP: float,
+                              fmin_VBB: float,
+                              tpre_SP: float,
+                              tpre_VBB: float,
+                              twin_start: float,
+                              twin_end: float) -> None:
+
+        self.waveforms_SP = None
+        self.waveforms_VBB = None
+        self.waveforms_VBB100 = None
+
+        fnam_VBB = create_fnam_event(
+            filenam_inst='XB.ELYDG.00.BH?.D.%04d.%03d', station='ELYDG',
+            sc3dir=sc3dir, time=self.picks['start'])
+        if len(glob(fnam_VBB)) % 3 == 0:
+            self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
+                                           kind=kind,
+                                           fmin=fmin_VBB,
+                                           twin=[twin_start - tpre_VBB,
+                                                 twin_end + tpre_VBB])
+            if self.waveforms_VBB is not None and \
+                    len(self.waveforms_VBB) != 3:
+                self.waveforms_VBB = None
+
+        if self.waveforms_VBB is None:
+            print('Deglitched data not found on day %s (%s)' %
+                  (self.picks['start'], fnam_VBB))
+
+    def _read_data_from_sc3dir_denoised(self,
+                              inv: obspy.Inventory,
+                              sc3dir: str,
+                              kind: str,
+                              fmin_SP: float,
+                              fmin_VBB: float,
+                              tpre_SP: float,
+                              tpre_VBB: float,
+                              twin_start: float,
+                              twin_end: float) -> None:
+
+        self.waveforms_SP = None
+        self.waveforms_VBB = None
+        self.waveforms_VBB100 = None
+
+        # use location code 03. The other ones are previous computations 
+        # with different parameters and event-based only
+        fnam_VBB = create_fnam_event(
+            filenam_inst='XB.ELYDL.03.BH?.D.%04d.%03d', station='ELYDL',
+            sc3dir=sc3dir, time=self.picks['start'])
+        if len(glob(fnam_VBB)) % 3 == 0:
+            self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
+                                           kind=kind,
+                                           fmin=fmin_VBB,
+                                           twin=[twin_start - tpre_VBB,
+                                                 twin_end + tpre_VBB])
+            if self.waveforms_VBB is not None and \
+                    len(self.waveforms_VBB) != 3:
+                self.waveforms_VBB = None
+
+        if self.waveforms_VBB is None:
+            print('Denoised data not found on day %s (%s)' %
+                  (self.picks['start'], fnam_VBB))
+
+
     def available_sampling_rates(self):
         available = dict()
         channels = {'VBB_Z': '??Z',
                     'VBB_N': '??N',
-                    'VBB_E': '??N'}
+                    'VBB_E': '??E'}
         for chan, seed in channels.items():
-            if self.waveforms_VBB is None:
-                available[chan] = 0.0
-            else:
-                available[chan] = self.waveforms_VBB.select(
-                    channel=seed)[0].stats.sampling_rate
+            available[chan] = None
+            if self.waveforms_VBB is not None:
+                tr = self.waveforms_VBB.select(channel=seed)
+                if len(tr) > 0:
+                    available[chan] = tr[0].stats.sampling_rate
 
-        channels = {'SP_Z': 'EHZ',
-                    'SP_N': 'EHN',
-                    'SP_E': 'EHE'}
+        channels = {'VBB100_Z': '??Z',
+                    'VBB100_N': '??N',
+                    'VBB100_E': '??E'}
+        for chan, seed in channels.items():
+            available[chan] = None
+            if self.waveforms_VBB100 is not None:
+                tr = self.waveforms_VBB100.select(channel=seed)
+                if len(tr) > 0:
+                    available[chan] = tr[0].stats.sampling_rate
+
+        channels = {'SP_Z': '??Z',
+                    'SP_N': '??N',
+                    'SP_E': '??E'}
 
         for chan, seed in channels.items():
-            if self.waveforms_SP is None:
-                available[chan] = None
-            else:
-                st = self.waveforms_SP.select(channel=seed)
-                if len(st) > 0:
-                    available[chan] = st[0].stats.sampling_rate
-                else:
-                    available[chan] = None
-
-        if available['SP_Z'] is None:
-            channels = {'SP_Z': 'HHZ',
-                        'SP_N': 'HHN',
-                        'SP_E': 'HHE'}
-
-            for chan, seed in channels.items():
-                if self.waveforms_SP is None:
-                    available[chan] = None
-                else:
-                    st = self.waveforms_SP.select(channel=seed)
-                    if len(st) > 0:
-                        available[chan] = st[0].stats.sampling_rate
-                    else:
-                        available[chan] = None
+            available[chan] = None
+            if self.waveforms_SP is not None:
+                tr = self.waveforms_SP.select(channel=seed)
+                if len(tr) > 0:
+                    available[chan] = tr[0].stats.sampling_rate
 
         return available
 
-    def calc_spectra(self, winlen_sec, detick_nfsamp=0, padding=True):
+    def calc_spectra(self,
+                     winlen_sec,
+                     detick_nfsamp=0,
+                     padding=True,
+                     time_windows=None,
+                     rotate: bool = False,
+                     instrument: str = ''):
         """
         Add spectra to event object.
         Spectra are stored in dictionaries
@@ -573,14 +679,53 @@ class Event:
         if not self._waveforms_read:
             raise RuntimeError('waveforms not read in Event object\n' +
                                'Call Event.read_waveforms() first.')
-        twins = (((self.picks['start']),
-                  (self.picks['end'])),
-                 ((self.picks['noise_start']),
-                  (self.picks['noise_end'])),
-                 ((self.picks['P_spectral_start']),
-                  (self.picks['P_spectral_end'])),
-                 ((self.picks['S_spectral_start']),
-                  (self.picks['S_spectral_end'])))
+        if time_windows is not None:
+            # Get the time windows from the external source.
+            # Start and end are always from the catalog
+            twins = (((self.picks['start']),
+                    (self.picks['end'])),
+                    ((time_windows['noise_start']),
+                    (time_windows['noise_end'])),
+                    ((time_windows['P_spectral_start']),
+                    (time_windows['P_spectral_end'])),
+                    ((time_windows['S_spectral_start']),
+                    (time_windows['S_spectral_end'])))
+
+        else:
+            # Use what is given in the catalog
+            twins = (((self.picks['start']),
+                    (self.picks['end'])),
+                    ((self.picks['noise_start']),
+                    (self.picks['noise_end'])),
+                    ((self.picks['P_spectral_start']),
+                    (self.picks['P_spectral_end'])),
+                    ((self.picks['S_spectral_start']),
+                    (self.picks['S_spectral_end'])))
+
+        if instrument == 'VBB':
+            st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
+            st_HF = None
+        elif instrument == 'VBB100':
+            st_LF = None
+            st_HF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
+        elif instrument == 'SP':
+            st_LF = None
+            st_HF = self.waveforms_SP.select(channel='??[ENZ]').copy()
+        elif instrument == 'VBB+VBB100':
+            st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
+            st_HF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
+        elif instrument == 'VBB+SP':
+            st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
+            st_HF = self.waveforms_SP.select(channel='??[ENZ]').copy()
+        else:
+            raise ValueError(f'Invalid value for instrument: {instrument}')
+
+        if rotate:
+            if st_LF is not None:
+                st_LF.rotate('NE->RT', back_azimuth=self.baz)
+            if st_HF is not None:
+                st_HF.rotate('NE->RT', back_azimuth=self.baz)
+
         self.spectra = dict()
         self.spectra_SP = dict()
         variables = ('all',
@@ -588,16 +733,17 @@ class Event:
                      'P',
                      'S')
         for twin, variable in zip(twins, variables):
-            spectrum_variable = dict()
             if len(twin[0]) == 0:
                 continue
-            if self.waveforms_VBB is not None:
-                for chan in ['Z', 'N', 'E']:
-                    st_sel = self.waveforms_VBB.select(
-                        channel='??' + chan).copy()
-                    tr = detick(st_sel[0], detick_nfsamp=detick_nfsamp)
-                    tr.trim(starttime=utct(twin[0]),
-                            endtime=utct(twin[1]))
+            if st_LF is not None:
+                spectrum_variable = dict()
+                for chan in (['Z','R','T'] if rotate else ['Z','N','E']):
+                    st_sel = st_LF.select(channel='??' + chan).copy()
+                    if detick_nfsamp != 0:
+                        tr = detick(st_sel[0], detick_nfsamp=detick_nfsamp)
+                    else:
+                        tr = st_sel[0].copy()
+                    tr.trim(starttime=utct(twin[0]), endtime=utct(twin[1]))
 
                     if tr.stats.npts > 0:
                         f, p = calc_PSD(tr, winlen_sec=winlen_sec,
@@ -605,46 +751,60 @@ class Event:
                         spectrum_variable['p_' + chan] = p
                         spectrum_variable['f'] = f
 
-                if len(spectrum_variable) > 0:
+                if spectrum_variable:
                     self.spectra[variable] = spectrum_variable
+                    self.spectra['stream_info'] = f'LF={st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
 
-            if self.waveforms_SP is not None:
+            if st_HF is not None:
                 spectrum_variable = dict()
-                for chan in ['Z', 'N', 'E']:
-                    st_sel = self.waveforms_SP.select(
-                        channel='??' + chan).copy()
+                for chan in (['Z','R','T'] if rotate else ['Z','N','E']):
+                    st_sel = st_HF.select(channel='??' + chan).copy()
                     if len(st_sel) > 0:
-                        tr = detick(st_sel[0], detick_nfsamp=detick_nfsamp)
-                        tr.trim(starttime=utct(twin[0]),
-                                endtime=utct(twin[1]))
+                        if detick_nfsamp != 0:
+                            tr = detick(st_sel[0], detick_nfsamp=detick_nfsamp)
+                        else:
+                            tr = st_sel[0].copy()
+                        tr.trim(starttime=utct(twin[0]), endtime=utct(twin[1]))
 
                         if tr.stats.npts > 0:
                             f, p = calc_PSD(tr, winlen_sec=winlen_sec,
                                             padding=padding)
                             spectrum_variable['p_' + chan] = p
                             spectrum_variable['f'] = f
-                    else:
+                    elif p is not None:
                         # Case that only SP1==SPZ is switched on
-                        spectrum_variable['p_' + chan] = \
-                            np.zeros_like(p)
+                        spectrum_variable['p_' + chan] = np.zeros_like(p)
 
-            if len(spectrum_variable) > 0:
-                self.spectra_SP[variable] = spectrum_variable
-            if self.waveforms_VBB is None and self.waveforms_SP is not None:
-                self.spectra[variable] = spectrum_variable
+                if spectrum_variable:
+                    self.spectra_SP[variable] = spectrum_variable
+                    self.spectra_SP['stream_info'] = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+
+            if variable not in self.spectra and variable in self.spectra_SP:
+                self.spectra[variable] = self.spectra_SP[variable]
+            if variable not in self.spectra_SP and variable in self.spectra:
+                self.spectra_SP[variable] = self.spectra[variable]
 
         # compute horizontal spectra on VBB
         for signal in self.spectra.keys():
-            if signal in self.spectra:
+            if signal == 'stream_info':
+                continue
+            if not rotate:
                 self.spectra[signal]['p_H'] = \
                     self.spectra[signal]['p_N'] + self.spectra[signal]['p_E']
+            else:
+                self.spectra[signal]['p_H'] = \
+                    self.spectra[signal]['p_T'] + self.spectra[signal]['p_R']
 
         # compute horizontal spectra on SP
         for signal in self.spectra_SP.keys():
-            if signal in self.spectra:
+            if signal == 'stream_info':
+                continue
+            if not rotate:
                 self.spectra_SP[signal]['p_H'] = \
-                    self.spectra_SP[signal]['p_N'] + self.spectra_SP[signal][
-                        'p_E']
+                    self.spectra_SP[signal]['p_N'] + self.spectra_SP[signal]['p_E']
+            else:
+                self.spectra_SP[signal]['p_H'] = \
+                    self.spectra_SP[signal]['p_T'] + self.spectra_SP[signal]['p_R']
 
         self.amplitudes = {'A0': None,
                            'tstar': None,
@@ -668,7 +828,7 @@ class Event:
             for signal in ['S', 'P', 'all']:
                 amplitudes = None
                 if signal in self.spectra:
-                    if self.mars_event_type_short == 'SF':
+                    if self.mars_event_type_short == 'SF' and not rotate:
                         comp = 'p_H'
                     else:
                         comp = 'p_Z'
@@ -726,12 +886,23 @@ class Event:
         if instrument == 'VBB':
             if self.waveforms_VBB is None:
                 return None
-            else:
-                st_work = self.waveforms_VBB.copy()
-        else:
+            st_work = self.waveforms_VBB.copy()
+        elif instrument == 'VBB100':
+            if self.waveforms_VBB100 is None:
+                return None
+            st_work = self.waveforms_VBB100.copy()
+        elif instrument == 'SP':
+            if self.waveforms_SP is None:
+                return None
             st_work = self.waveforms_SP.copy()
 
+        if not st_work:
+            return None
+
         st_work.filter('bandpass', zerophase=True, freqmin=fmin, freqmax=fmax)
+
+        if not st_work:
+            return None
 
         if unit == 'nm':
             output_fac = 1e9
@@ -753,6 +924,8 @@ class Event:
             tmin = utct(self.picks[pick]) - twin_sec
             tmax = utct(self.picks[pick]) + twin_sec
             st_work.trim(starttime=tmin, endtime=tmax)
+            if not st_work:
+                return None
             if comp in ['Z', 'N', 'E']:
                 return abs(st_work.select(channel='??' + comp)[0].data).max() \
                        * output_fac
@@ -766,8 +939,8 @@ class Event:
                 amp_E = abs(st_work.select(channel='??E')[0].data).max()
                 return max((amp_E, amp_N)) * output_fac
             elif comp == 'vertical':
-                return abs(st_work.select(channel='??Z')[0].data).max() \
-                       * output_fac
+                amp_Z = abs(st_work.select(channel='??Z')[0].data).max()
+                return amp_Z * output_fac
 
     def magnitude(self,
                   mag_type: str,
@@ -791,7 +964,7 @@ class Event:
                     mag_type = "MFB"
                 else:
                     mag_type = "m2.4"
-            elif self.mars_event_type_short in ['LF', 'XB', 'BB', 'HF']:
+            elif self.mars_event_type_short in ['LF', 'WB', 'BB', 'HF']:
                 mag_type = "MFB"
             else:
                 mag_type = "m2.4"
@@ -1215,13 +1388,15 @@ class Event:
                         log: bool = False,
                         waveforms: bool = False,
                         normwindow: str = 'all',
+                        normtype: str = 'none', # 'single_component', 'all_components'
+                        rotate: bool = False,
                         annotations: Annotations = None,
                         tmin_plot: float = None,
                         tmax_plot: float = None,
                         timemarkers: dict = None,
                         starttime: obspy.UTCDateTime = None,
                         endtime: obspy.UTCDateTime = None,
-                        instrument: str = 'VBB',
+                        instrument: str = '',
                         f_VBB_SP_transition = 7.5,
                         fnam: str = None):
         import matplotlib.pyplot as plt
@@ -1260,28 +1435,34 @@ class Event:
         if instrument == 'VBB':
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
+            st_LF_desc = f'LF={st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
+            st_HF_desc = ''
+        elif instrument == 'VBB100':
+            st_LF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
+            st_HF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
+            st_LF_desc = ''
+            st_HF_desc = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
         elif instrument == 'SP':
-            try:
-                st_LF = self.waveforms_SP.select(channel='??[ENZ]').copy()
-                st_HF = self.waveforms_SP.select(channel='??[ENZ]').copy()
-            except AttributeError:
-                st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
-                st_HF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
-        elif instrument == 'both':
+            st_LF = self.waveforms_SP.select(channel='??[ENZ]').copy()
+            st_HF = self.waveforms_SP.select(channel='??[ENZ]').copy()
+            st_LF_desc = ''
+            st_HF_desc = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+        elif instrument == 'VBB+VBB100':
+            st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
+            st_HF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
+            st_LF_desc = f'LF={st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
+            st_HF_desc = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+        elif instrument == 'VBB+SP':
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_SP.select(channel='??[ENZ]').copy()
-
-
+            st_LF_desc = f'LF={st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
+            st_HF_desc = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
         else:
             raise ValueError(f'Invalid value for instrument: {instrument}')
 
-        try:
+        if rotate:
             st_HF.rotate('NE->RT', back_azimuth=self.baz)
             st_LF.rotate('NE->RT', back_azimuth=self.baz)
-        except:
-            rotated = False
-        else:
-            rotated = True
 
         tstart_norm = dict(P=self.picks['P_spectral_start'],
                            S=self.picks['S_spectral_start'],
@@ -1309,7 +1490,18 @@ class Event:
             st.trim(starttime=utct(starttime) - 1. / fmin,
                     endtime=utct(endtime) + 1. / fmin)
 
+        maxfac_all = None
+        offset_all = None
+        maxfac_tr = {}
+        offset_tr = {}
+        trids = ('Z','2','3')
+        for trid in trids:
+            maxfac_tr[trid] = None
+            offset_tr[trid] = None
+
+        freqs_data = {}
         for ifreq, fcenter in enumerate(freqs):
+
             f0 = fcenter / df
             f1 = fcenter * df
 
@@ -1325,70 +1517,134 @@ class Event:
                                    corners=8)
             except ValueError:  # If f0 is above Nyquist
                 print('No 20sps data available for event %s' % self.name)
+                continue
+
+            st_filt.trim(starttime=utct(starttime),  endtime=utct(endtime))
+
+            if not st_filt:
+                #print('No data available for event %s' % self.name)
+                continue
+
+            if rotate:
+                tr_3 = st_filt.select(channel='??T')[0]
+                tr_2 = st_filt.select(channel='??R')[0]
             else:
-                st_filt.trim(starttime=utct(starttime),
-                             endtime=utct(endtime))
+                tr_2 = st_filt.select(channel='??N')[0]
+                tr_3 = st_filt.select(channel='??E')[0]
 
-                if rotated:
-                    tr_3 = st_filt.select(channel='?HT')[0]
-                    tr_2 = st_filt.select(channel='?HR')[0]
+            tr_Z = st_filt.select(channel='??Z')[0]
+
+            tr_2_env = envelope_smooth(tr=tr_2, mode='same',
+                                       envelope_window_in_sec=10.)
+            tr_3_env = envelope_smooth(tr=tr_3, mode='same',
+                                       envelope_window_in_sec=10.)
+            tr_Z_env = envelope_smooth(tr=tr_Z, mode='same',
+                                       envelope_window_in_sec=10.)
+
+            freqs_data[ifreq] = {}
+            freqs_data[ifreq]['fcenter'] = fcenter
+
+            freqs_data[ifreq]['tr'] = {}
+            freqs_data[ifreq]['tr']['Z'] = tr_Z
+            freqs_data[ifreq]['tr']['2'] = tr_2
+            freqs_data[ifreq]['tr']['3'] = tr_3
+
+            freqs_data[ifreq]['tr_env'] = {}
+            freqs_data[ifreq]['tr_env']['Z']= tr_Z_env
+            freqs_data[ifreq]['tr_env']['2']= tr_2_env
+            freqs_data[ifreq]['tr_env']['3']= tr_3_env
+
+            freqs_data[ifreq]['maxfac'] = {}
+            freqs_data[ifreq]['offset'] = {}
+            for trid, tr in zip(trids, (tr_Z_env, tr_2_env, tr_3_env) ):
+
+                if log:
+                    tr_norm = tr.slice(starttime=tstart_norm,
+                                       endtime=tend_norm)
+                    maxfac = np.quantile(tr_norm.data, q=0.8)
+                    offset = np.quantile(tr_norm.data, q=0.1)
                 else:
-                    tr_2 = st_filt.select(channel='?HN')[0]
-                    tr_3 = st_filt.select(channel='?HE')[0]
-                tr_2_env = envelope_smooth(tr=tr_2, mode='same',
-                                           envelope_window_in_sec=10.)
-                tr_3_env = envelope_smooth(tr=tr_3, mode='same',
-                                           envelope_window_in_sec=10.)
-                tr_Z = st_filt.select(channel='?HZ')[0]
-                tr_Z_env = envelope_smooth(tr=tr_Z, mode='same',
-                                           envelope_window_in_sec=10.)
-
-                tr_real = [tr_Z, tr_2, tr_3]
-                for itr, tr in enumerate((tr_Z_env, tr_2_env, tr_3_env)):
-                    if log:
-                        tr_norm = tr.slice(starttime=tstart_norm,
-                                           endtime=tend_norm)
+                    tr_norm = tr.slice(starttime=tstart_norm,
+                                       endtime=tend_norm,
+                                       nearest_sample=True)
+                    try:
                         maxfac = np.quantile(tr_norm.data, q=0.8)
                         offset = np.quantile(tr_norm.data, q=0.1)
-                    else:
-                        tr_norm = tr.slice(starttime=tstart_norm,
-                                           endtime=tend_norm,
-                                           nearest_sample=True)
-                        try:
-                            maxfac = np.quantile(tr_norm.data, q=0.8)
-                            offset = np.quantile(tr_norm.data, q=0.1)
-                        except:
-                            maxfac = 1.e-9
-                            offset = 0.
+                    except:
+                        maxfac = 1.e-9
+                        offset = 0.
 
-                    t_offset = float(tr_Z_env.stats.starttime - t_ref)
-                    xvec_env = tr_Z_env.times() + t_offset
-                    xvec = tr_Z.times() + t_offset
-                    # ax[itr].plot(xvec_env,
-                    #              iangle + tr_Z_env.data / maxfac, c='grey',
-                    #              lw=1)
-                    # ax[itr].fill_between(x=xvec_env,
-                    #                      y1=iangle + tr_Z_env.data / maxfac,
-                    #                      y2=iangle, color='darkgrey')
-                    if log:
-                        ax[itr].plot(xvec_env,
-                                     ifreq + np.log(tr.data / maxfac) / 3,
-                                     lw=1.0, zorder=50)
-                    else:
-                        if waveforms:
-                            color = 'k'
-                        else:
-                            color = 'C%d' % (ifreq % 10)
+                freqs_data[ifreq]['maxfac'][trid] = maxfac
+                freqs_data[ifreq]['offset'][trid] = offset
 
-                        ax[itr].plot(xvec_env,
-                                     ifreq + (tr.data - offset) / maxfac,
-                                     c=color,
-                                     lw=0.5, zorder=80)
-                        if waveforms:
-                            ax[itr].plot(xvec,
-                                         ifreq + tr_real[itr].data / maxfac,
-                                         c='C%d' % (ifreq % 10),
-                                         lw=0.5, zorder=50 - ifreq)
+                if maxfac_all is None or maxfac_all < maxfac:
+                    maxfac_all = maxfac
+                if offset_all is None or offset_all > offset:
+                    offset_all = offset
+
+                if maxfac_tr[trid] is None or maxfac_tr[trid] < maxfac:
+                    maxfac_tr[trid] = maxfac
+                if offset_tr[trid] is None or offset_tr[trid] > offset:
+                    offset_tr[trid] = offset
+
+        for ifreq, fcenter in enumerate(freqs):
+
+            if ifreq not in freqs_data:
+                continue
+
+            if fcenter != freqs_data[ifreq]['fcenter']:
+               raise RuntimeError('Internal logic error while bulding filterbanks')
+
+            tr_Z     = freqs_data[ifreq]['tr']['Z']
+            tr_Z_env = freqs_data[ifreq]['tr_env']['Z']
+
+            t_offset = float(tr_Z_env.stats.starttime - t_ref)
+            xvec_env = tr_Z_env.times() + t_offset
+            xvec = tr_Z.times() + t_offset
+
+            for itr, trid in enumerate(trids):
+
+                maxfac = None
+                offset = None
+                if normtype == 'none':
+                    maxfac = freqs_data[ifreq]['maxfac'][trid]
+                    offset = freqs_data[ifreq]['offset'][trid]
+                elif normtype == 'single_component':
+                    maxfac = maxfac_tr[trid]
+                    offset = offset_tr[trid]
+                elif normtype == 'all_components':
+                    maxfac = maxfac_all
+                    offset = offset_all
+                else:
+                    raise ValueError(f'Invalid value for normtype: {normtype}')
+
+                tr       = freqs_data[ifreq]['tr'][trid]
+                tr_env   = freqs_data[ifreq]['tr_env'][trid]
+                # ax[itr].plot(xvec_env,
+                #              iangle + tr_Z_env.data / maxfac, c='grey',
+                #              lw=1)
+                # ax[itr].fill_between(x=xvec_env,
+                #                      y1=iangle + tr_Z_env.data / maxfac,
+                #                      y2=iangle, color='darkgrey')
+                if log:
+                    ax[itr].plot(xvec_env,
+                                 ifreq + np.log(tr_env.data / maxfac) / 3,
+                                 lw=1.0, zorder=50)
+                else:
+                    if waveforms:
+                        color = 'k'
+                    else:
+                        color = 'C%d' % (ifreq % 10)
+
+                    ax[itr].plot(xvec_env,
+                                 ifreq + (tr_env.data - offset) / maxfac,
+                                 c=color,
+                                 lw=0.5, zorder=80)
+                    if waveforms:
+                        ax[itr].plot(xvec,
+                                     ifreq + tr.data / maxfac,
+                                     c='C%d' % (ifreq % 10),
+                                     lw=0.5, zorder=50 - ifreq)
 
         if timemarkers is not None:
             for phase, time in timemarkers.items():
@@ -1446,14 +1702,14 @@ class Event:
         ax[0].set_ylim(-1.5, nfreqs + 1.5)
         ax[0].set_ylabel('frequency / Hz')
         ax[0].set_title('Vertical')
-        if rotated:
+        if rotate:
             ax[1].set_title('Radial')
             ax[2].set_title('Transverse')
         else:
             ax[1].set_title('North/South')
             ax[2].set_title('East/West')
-        fig.suptitle('Event %s (%5.3f-%5.3f Hz)' %
-                     (self.name, fmin, fmax))
+        fig.suptitle( ('Event=%s LQ=%s Type=%s (%5.3f-%5.3f Hz) %s %s' %  (self.name, self.quality, self.mars_event_type_short, fmin, fmax, st_LF_desc, st_HF_desc) )
+                , fontsize='x-small')
         plt.subplots_adjust(top=0.911,
                             bottom=0.097,
                             left=0.089,
@@ -1657,7 +1913,7 @@ class Event:
             phase_S = 'Sg'
             f_band_density=[0.5, 2.0]
 
-        elif self.mars_event_type_short in ['LF', 'XB', 'BB']:
+        elif self.mars_event_type_short in ['LF', 'WB', 'BB']:
             if self.picks['P']:
                 phase_P = 'P'
             elif self.picks['PP']:
