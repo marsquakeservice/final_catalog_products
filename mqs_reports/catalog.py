@@ -15,6 +15,7 @@ from typing import Union
 import matplotlib.pylab as pl
 import matplotlib.ticker
 import numpy as np
+import os
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 from obspy import UTCDateTime as utct
@@ -248,9 +249,38 @@ class Catalog:
         :param padding: Zeropad signal by factor of 2 to smoothen spectra?
         """
         for event in tqdm(self, file=stdout):
-            event.calc_spectra(winlen_sec=winlen_sec,
-                               detick_nfsamp=detick_nfsamp,
-                               padding=padding)
+
+            avail_rate = event.available_sampling_rates()
+
+            if avail_rate['SP_Z'] == 100. and \
+               avail_rate['SP_N'] == 100. and \
+               avail_rate['SP_E'] == 100.:
+               if avail_rate['VBB_Z'] is not None and \
+                  avail_rate['VBB_N'] is not None and \
+                  avail_rate['VBB_E'] is not None:
+                    instrument = 'VBB+SP'
+               else:
+                    instrument = 'SP'
+            elif avail_rate['VBB100_Z'] == 100. and \
+                 avail_rate['VBB100_N'] == 100. and \
+                 avail_rate['VBB100_E'] == 100.:
+               if avail_rate['VBB_Z'] is not None and \
+                  avail_rate['VBB_N'] is not None and \
+                  avail_rate['VBB_E'] is not None:
+                    instrument = 'VBB+VBB100'
+               else:
+                    instrument = 'VBB100'
+            else:
+                instrument = 'VBB'
+
+            try:
+                event.calc_spectra(winlen_sec=winlen_sec,
+                                   detick_nfsamp=detick_nfsamp,
+                                   padding=padding,
+                                   instrument=instrument)
+            except ValueError as e:
+                print('Problem with event' + event.name)
+                raise e
 
     def save_magnitudes(self, fnam, version='Giardini2020', verbose=False):
         mags = []
@@ -267,6 +297,7 @@ class Catalog:
                        inv,
                        sc3dir: str,
                        event_tmp_dir='./events',
+                       wf_type: str = 'RAW', # RAW, DEGLITCHED, DENOISED
                        kind: str = 'DISP') -> None:
         """
         Wrapper to check whether local copy of corrected waveform exists and
@@ -277,8 +308,8 @@ class Catalog:
                      expect the data to be in displacement
         """
         for event in tqdm(self, file=stdout):
-            event.read_waveforms(inv=inv, kind=kind, sc3dir=sc3dir,
-                                 event_tmp_dir=event_tmp_dir)
+            event.read_waveforms(inv=inv, wf_type=wf_type, kind=kind,
+                                 sc3dir=sc3dir, event_tmp_dir=event_tmp_dir)
 
     def plot_pickdiffs(
          self, pick1_X, pick2_X, pick1_Y, pick2_Y, vX=None, vY=None, fig=None,
@@ -1082,98 +1113,109 @@ class Catalog:
     def plot_filterbanks(self,
                          dir_out: str = 'filterbanks',
                          annotations: Annotations = None,
-                         instrument: str = None,
-                         fmax_LF: float = 8.,
-                         fmin_LF: float = 1. / 32.,
-                         fmax_HF: float = 16.,
-                         fmin_HF: float = 1. / 2.,
-                         df_LF: float = 2. ** 0.5,
-                         df_HF: float = 2. ** 0.25
+                         normtype: str = 'single_component',
+                         rotate: bool = False,
+                         smprate: str = '' # VBB_LF, SP_HF, LF+HF
                          ):
 
         for event in tqdm(self, file=stdout):
-            if event.mars_event_type_short in ['LF', 'XB', 'BB']:
-                if instrument is None:
-                    instrument = 'VBB'
+
+            if rotate and event.baz is None:
+                continue
+
+            if event.waveforms_VBB is None:
+                continue
+
+            fmax_LF = 8.
+            fmin_LF = 1. / 32.
+            fmax_HF = 16.
+            fmin_HF = 1. / 2.
+            df_LF = 2. ** 0.5
+            df_HF = 2. ** 0.25
+
+            avail_rate = event.available_sampling_rates()
+            if smprate == 'VBB_LF':
+                if avail_rate['VBB_Z'] is None or \
+                   avail_rate['VBB_N'] is None or \
+                   avail_rate['VBB_E'] is None:
+                    continue
+                instrument = 'VBB'
+                fmin = fmin_LF
+                fmax = fmax_LF
+                df = df_LF
+            elif smprate == 'SP_HF':
+                if avail_rate['SP_Z'] != 100. or \
+                   avail_rate['SP_N'] != 100. or \
+                   avail_rate['SP_E'] != 100.:
+                    continue
+                instrument = 'SP'
+                fmin = fmin_HF
+                fmax = fmax_HF
+                df = df_HF
+            elif smprate == 'LF+HF':
+                if avail_rate['VBB100_Z'] == 100. and \
+                   avail_rate['VBB100_N'] == 100. and \
+                   avail_rate['VBB100_E'] == 100.:
+                    instrument = 'VBB+VBB100'
+                elif avail_rate['SP_Z'] == 100. and \
+                     avail_rate['SP_N'] == 100. and \
+                     avail_rate['SP_E'] == 100.:
+                    instrument = 'VBB+SP'
+                else:
+                    continue
+                fmin = fmin_LF
+                fmax = fmax_HF
+                df = df_HF
+            else:
+                raise ValueError(f'Invalid value for smprate: {smprate}')
+
+            if event.mars_event_type_short in ['LF', 'WB', 'BB']:
                 if len(event.picks['S']) * len(event.picks['P']) > 0:
                     t_S = utct(event.picks['S'])
                     t_P = utct(event.picks['P'])
                 else:
                     t_P = utct(event.starttime)
                     t_S = None
-                fmin = fmin_LF
-                fmax = fmax_LF
-                df = df_LF
-            elif event.mars_event_type_short in ['HF', '24']:
-                if instrument is None:
-                    instrument = 'SP'
+            elif event.mars_event_type_short in ['HF', '24', 'VF']:
                 if len(event.picks['Sg']) * len(event.picks['Pg']) > 0:
                     t_S = utct(event.picks['Sg'])
                     t_P = utct(event.picks['Pg'])
                 else:
                     t_P = utct(event.starttime)
                     t_S = None
-                fmin = fmin_HF
-                fmax = fmax_HF
-                df = df_HF
-
-            elif event.mars_event_type_short == 'VF':
-                if event.available_sampling_rates()['SP_Z'] == 100.:
-                    if instrument is None:
-                        instrument = 'both'
-                    if len(event.picks['Sg']) * len(event.picks['Pg']) > 0:
-                        t_S = utct(event.picks['Sg'])
-                        t_P = utct(event.picks['Pg'])
-                    else:
-                        t_P = utct(event.starttime)
-                        t_S = None
-                    fmin = 1./8.
-                    fmax = 32.0 * np.sqrt(2.)
-                    df = df_HF
-                else:
-                    if instrument is None:
-                        instrument = 'SP'
-                    if len(event.picks['Sg']) * len(event.picks['Pg']) > 0:
-                        t_S = utct(event.picks['Sg'])
-                        t_P = utct(event.picks['Pg'])
-                    else:
-                        t_P = utct(event.starttime)
-                        t_S = None
-                    fmin = 1./8.
-                    fmax = 10.
-                    df = df_HF
-
             else: # Super High Frequency
-                if instrument is None:
-                    instrument = 'SP'
                 t_P = utct(event.starttime)
                 t_S = None
-                fmin = 0.5
-                fmax = 32.0 * np.sqrt(2.)
-                df = df_HF
 
-            fnam = pjoin(dir_out, event.mars_event_type_short,
-                         'filterbank_%s_all.png' % event.name)
-            nodata = True
+            ev_folder = pjoin(dir_out, event.name)
+
+            if not os.path.exists(ev_folder):
+                os.makedirs(ev_folder)
+
+            def plot_filename(ev, zoom):
+                rot = 'ZRT' if rotate else 'ZNE'
+                return pjoin(ev_folder,
+                         'filterbank_%s_Zoom_%s_SampRate_%s_Norm_%s_Rotation_%s_Data_%s.png' %
+                         (ev.name, zoom, smprate, normtype, rot, ev.wf_type) )
+
+            fnam = plot_filename(event, 'out')
+
+            hasdata = False
             if not pexists(fnam):
                 try:
                     event.plot_filterbank(normwindow='all', annotations=annotations,
                                           starttime=event.starttime - 300.,
                                           endtime=event.endtime + 300.,
                                           instrument=instrument,
-                                          fnam=fnam, fmin=fmin, fmax=fmax, df=df)
-                except IndexError as err:
-                    print(f'Problem with filterbank for event {event.name}')
-                    print(err)
+                                          fnam=fnam, fmin=fmin, fmax=fmax, df=df,
+                                          normtype=normtype, rotate=rotate)
                 except AttributeError as err:
-                    print(f'Problem with filterbank for event {event.name}')
-                    print(err)
+                    print(f'Problem with filterbank for event {event.name}: {err}')
                 else:
-                    nodata = False
+                    hasdata = True
 
-            if event.quality in ['A', 'B', 'C'] and not nodata:
-                fnam = pjoin(dir_out, event.mars_event_type_short,
-                             'filterbank_%s_zoom.png' % event.name)
+            if event.quality in ['A', 'B', 'C'] and hasdata:
+                fnam = plot_filename(event, 'in')
                 try:
                     if not pexists(fnam):
                         event.plot_filterbank(starttime=t_P - 300.,
@@ -1183,11 +1225,11 @@ class Catalog:
                                               tmin_plot=-240., tmax_plot=900.,
                                               fnam=fnam,
                                               instrument=instrument,
-                                              fmin=fmin, fmax=fmax, df=df)
+                                              fmin=fmin, fmax=fmax, df=df,
+                                              normtype=normtype, rotate=rotate)
 
                     if t_S is not None:
-                        fnam = pjoin(dir_out, event.mars_event_type_short,
-                                     'filterbank_%s_phases.png' % event.name)
+                        fnam = plot_filename(event, 'phases')
                         if not pexists(fnam):
                             event.plot_filterbank(starttime=t_P - 120.,
                                                   endtime=t_S + 240.,
@@ -1197,13 +1239,14 @@ class Catalog:
                                                   tmax_plot=t_S - t_P + 200.,
                                                   fnam=fnam,
                                                   instrument=instrument,
-                                                  fmin=fmin, fmax=fmax, df=df)
+                                                  fmin=fmin, fmax=fmax, df=df,
+                                                  normtype=normtype, rotate=rotate)
                 except IndexError as err:
                     print(f'Problem with filterbank for event {event.name}')
                     print(err)
             plt.close()
 
-    def plot_spectra(self,
+    def plot_spectra_unused(self,
                      ymin: float = -240.,
                      ymax: float = -170.,
                      fits: dict = None,
@@ -1215,7 +1258,7 @@ class Catalog:
         :param df_mute: percentage to mute around 1 Hz
         """
         nevents = len(self.events)
-        nevents_LF = len(self.select(event_type=['LF', 'XB', 'BB']))
+        nevents_LF = len(self.select(event_type=['LF', 'WB', 'BB']))
         nevents_HF = len(self.select(event_type=['HF', '24', 'VF']))
         nrows_HF = max(1, (nevents_HF + 1) // 2)
         nrows_LF = max(2, (nevents_LF + 1) // 2)
@@ -1457,18 +1500,7 @@ class Catalog:
                 iax += 1
                 ievent += 1
 
-    def write_table(self,
-                    fnam_out: str = 'overview.html',
-                    magnitude_version='Giardini2020') -> None:
-        """
-        Create HTML overview table for catalog
-        :param fnam_out: filename to write to
-        """
-        from mqs_reports.create_table import write_html
-
-        write_html(self, fnam_out=fnam_out, magnitude_version=magnitude_version)
-
-    def get_event_count_table(self, style='html') -> str:
+    def get_event_count_table(self, style='dataframe') -> str:
         """
         Create HTML event count table for catalog
         """
@@ -1490,12 +1522,8 @@ class Catalog:
         df.insert(loc=0, column='event type',
                   value=[f'{EVENT_TYPES_PRINT[e]}' for e in EVENT_TYPES])
 
-        if style == 'html':
-            return ('<H1>MQS events until %s</H1>\n<br>\n' %
-                    utct().strftime('%Y-%m-%dT%H:%M (UTC)') +
-                    df.to_html(index=False, table_id='events_all',
-                               col_space=40)
-                    )
+        if style == 'dataframe':
+            return df
         elif style == 'latex':
             return df.to_latex(index=False)
         else:
@@ -1512,7 +1540,7 @@ class Catalog:
         for event in tqdm(self):
             if (event.quality in ['A', 'B'] or \
                 (event.quality == 'C' and
-                event.mars_event_type_short in ['LF', 'XB', 'BB'])) \
+                event.mars_event_type_short in ['LF', 'WB', 'BB'])) \
                and not pexists(
                        pjoin(path_pol_plots, f'{event.name}.png')):
                 baz=event.baz if event.baz else None
@@ -1538,7 +1566,7 @@ def make_report_check_exists(event, dir_out, annotations):
                                   chan=chan,
                                   annotations=annotations)
             except KeyError as e:
-                print('Incomplete phases for event %s' % event.name)
-                print(e)
+                print('Incomplete phases for event %s (%s-%s): %s' %
+                      (event.name, event.mars_event_type_short, event.quality, e))
 
     return event.name, fnam_report

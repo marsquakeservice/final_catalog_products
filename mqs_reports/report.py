@@ -149,17 +149,18 @@ def plot_spec(event,
             kind = 'P'
         f = event.spectra[kind]['f']
         p = event.spectra[kind]['p_' + chan]
-        fig.add_trace(
-            go.Scatter(x=f[amps['fitting_mask']],
-                       y=10 * np.log10(p[amps['fitting_mask']]),
-                       name='data used for fit',
-                       marker=dict(size=5,
-                                   line=dict(width=1,
-                                             color='DarkSlateGrey')),
-                       # line=go.scatter.Line(color='red', width=5),
-                       mode="markers",
-                       **kwargs),
-            row=row, col=col)
+        if len(amps['fitting_mask']) == len(f):
+            fig.add_trace(
+                go.Scatter(x=f[amps['fitting_mask']],
+                           y=10 * np.log10(p[amps['fitting_mask']]),
+                           name='data used for fit',
+                           marker=dict(size=5,
+                                       line=dict(width=1,
+                                                 color='DarkSlateGrey')),
+                           # line=go.scatter.Line(color='red', width=5),
+                           mode="markers",
+                           **kwargs),
+                row=row, col=col)
 
     if event.waveforms_SP is not None \
             and event.waveforms_SP[0].stats.channel[0:2]=='EH':
@@ -283,9 +284,7 @@ def pick_plot(event, fig, types, row, col, chan, annotations=None, **kwargs):
              'full': (1. / 15., 3.5)
              }
 
-    if ((event.waveforms_SP is None or len(event.waveforms_SP) == 0)
-       and
-       (event.waveforms_VBB is None or len(event.waveforms_VBB) == 0)):
+    if event.waveforms_SP is None and event.waveforms_VBB is None:
         print('SP:')
         print(event.waveforms_SP)
 

@@ -61,7 +61,7 @@ if __name__ == '__main__':
     for event in catalog:
 
         av_data = event.available_sampling_rates()
-        if av_data['SP_Z'] is None:
+        if av_data['SP_Z'] is None or av_data['SP_Z'] != 100:
             print(event.name,
                   utct(event.starttime - 300).strftime('%Y-%m-%d %H:%M:%S'),
                   utct(event.endtime + 1200).strftime('%Y-%m-%d %H:%M:%S'))

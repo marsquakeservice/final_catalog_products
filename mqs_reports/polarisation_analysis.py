@@ -684,23 +684,27 @@ def vector_to_orthogonal_plane(BAZ_P, inc_P):
 
 def calculate_kde_maxima(kde_dataframe_P):
     max_x = [[], []]
-    for j, (i, xlim) in enumerate(zip((1, 3), (360, 90))):
-        kernel = stats.gaussian_kde(kde_dataframe_P[i]['P'], weights=kde_dataframe_P[i]['weights'])
-        kernel.covariance_factor = lambda: .17  # old:  lambda : .20
-        kernel._compute_covariance()
-        xs = np.linspace(-50, xlim + 50,
-                         1000)  # extend to positive and negative spaces so that the error can be wrapped around
-        ys = kernel(xs)
-        index = np.argmax(ys)
-        max_x[j] = xs[index]
+    try:
+        for j, (i, xlim) in enumerate(zip((1, 3), (360, 90))):
+            kernel = stats.gaussian_kde(kde_dataframe_P[i]['P'], weights=kde_dataframe_P[i]['weights'])
+            kernel.covariance_factor = lambda: .17  # old:  lambda : .20
+            kernel._compute_covariance()
+            xs = np.linspace(-50, xlim + 50,
+                             1000)  # extend to positive and negative spaces so that the error can be wrapped around
+            ys = kernel(xs)
+            index = np.argmax(ys)
+            max_x[j] = xs[index]
 
-        # get the error of the BAZ from the full width of the half maximum
-        if j == 0:
-            # find the FWHM
-            error = fwhm_error_from_kde(xs, ys, index)
-            # axes1[1].plot(xs, ys, color='yellow') #check if manual KDE is equal to seaborn KDE curve (for covariance_factor determination, but .17 seems good)
-            # axes1[1].axvspan(error[0], error[1], color='blue', alpha=0.1) #marks the fwhm area, but not wrapping around zero
-
+            # get the error of the BAZ from the full width of the half maximum
+            if j == 0:
+                # find the FWHM
+                error = fwhm_error_from_kde(xs, ys, index)
+                # axes1[1].plot(xs, ys, color='yellow') #check if manual KDE is equal to seaborn KDE curve (for covariance_factor determination, but .17 seems good)
+                # axes1[1].axvspan(error[0], error[1], color='blue', alpha=0.1) #marks the fwhm area, but not wrapping around zero
+    except ValueError:
+        print('Problem with KDE maximum')
+        max_x = [0, 0]
+        error = [180, 180]
     return max_x, error
 
 

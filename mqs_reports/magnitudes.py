@@ -124,7 +124,9 @@ def lorentz_att(f: np.array,
                 f_c: float,
                 tstar: float,
                 fw: float,
-                ampfac: float) -> np.array:
+                ampfac: float,
+                gamma: float = 0.0,
+                omega_exp: float = 2.0) -> np.array:
     """
     Attenuation spectrum, combined with Lorentz peak and source spectrum
     :param f: Frequency array (in Hz)
@@ -134,15 +136,21 @@ def lorentz_att(f: np.array,
     :param tstar: t* value from attenuation
     :param fw: Width of Lorentz peak
     :param ampfac: Amplification factor of Lorentz peak (AS FACTOR, NOT IN DB!!!)
+    :param gamma: Exponent to rotate the spectral fit
+    :param omega_exp: Exponent for the omega term in the spectral fit; (f / fc)^omega_exp
     :return predicted spectrum
     """
-    w = (f - f0) / (fw / 2.)
-    stf_amp = 1 / (1 + (f / f_c) ** 2)
-    return A0 + 20 * np.log10(
-        (1 + ampfac / (1 + w ** 2)) *
-        stf_amp *
-        np.exp(- tstar * f * np.pi))
+    # stf_amp = 1 / (1 + (f / f_c) ** 2)
+    # stf_amp = f**gamma / (1. + (f / f_c)** (2 + gamma))
+    stf_amp = f**gamma / (1. + (f / f_c)** (omega_exp + gamma))
 
+    w = (f - f0) / (fw / 2.)
+    term1 = 1 + ampfac / (1 + w ** 2)
+    term2 = stf_amp
+    term3 = np.exp(-tstar * f * np.pi)
+
+    result = A0 + 20 * np.log10(term1 * term2 * term3)
+    return result
 
 def _remove_singles(array):
     for ix in range(0, len(array) - 1):
@@ -272,7 +280,7 @@ def fit_spectra(f_sig, p_sig, f_noise, p_noise, event_type, df_mute=1.05,
     if event_type == 'LF':
         fmax = 0.9
         # noise_threshold = 1.2
-    elif event_type in ['BB', 'XB']:
+    elif event_type in ['BB', 'WB']:
         fmax = 2.0
         # noise_threshold = 1.2
     elif event_type == 'HF':

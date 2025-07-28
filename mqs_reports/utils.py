@@ -31,11 +31,12 @@ def UTCify(LMST_time, sol0=UTCDateTime(2018, 11, 26, 5, 10, 50.33508)):
 
 def create_fnam_event(
         time,
+        station,
         sc3dir,
         filenam_inst
         ):
     dirnam = pjoin(sc3dir,
-                   'op/data/waveform/%04d/XB/ELYSE/' % utct(time).year)
+                   'op/data/waveform/%04d/XB/%s/' % (utct(time).year, station))
     dirnam_inst = pjoin(dirnam, '???.D')
 
     hour = utct(time).strftime('%H')
@@ -118,15 +119,15 @@ def create_ZNE_HG(st: obspy.Stream,
             azi_v = 15.0
             azi_w = 255.0
         else:
-            chan_u = inv.select(station='ELYSE',
+            chan_u = inv.select(station=st[0].stats.station,
                                 starttime=st[0].stats.starttime,
                                 endtime=st[0].stats.endtime,
                                 channel=chan_name + 'U')[0][0][0]
-            chan_v = inv.select(station='ELYSE',
+            chan_v = inv.select(station=st[0].stats.station,
                                 starttime=st[0].stats.starttime,
                                 endtime=st[0].stats.endtime,
                                 channel=chan_name + 'V')[0][0][0]
-            chan_w = inv.select(station='ELYSE',
+            chan_w = inv.select(station=st[0].stats.station,
                                 starttime=st[0].stats.starttime,
                                 endtime=st[0].stats.endtime,
                                 channel=chan_name + 'W')[0][0][0]
