@@ -14,18 +14,28 @@ Marsquake service Mars event catalogue
     GPLv3
 """
 
+import os 
+
+from fnmatch import fnmatch
+from multiprocessing import Pool
 from os.path import join as pjoin, exists as pexists
 from sys import stdout as stdout
 from typing import Union
 
 import matplotlib.pylab as pl
 import matplotlib.ticker
-import numpy as np
-import os
+
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
+
+import numpy as np
+
 from obspy import UTCDateTime as utct
 from obspy.geodetics.base import degrees2kilometers
+
+import pandas as pd
+import psycopg2 as psycopg
+
 from scipy import stats
 from tqdm import tqdm
 
@@ -37,13 +47,37 @@ from mqs_reports.scatter_annot import scatter_annot
 from mqs_reports.snr import calc_stalta
 from mqs_reports.utils import plot_spectrum, envelope_smooth, pred_spec, solify
 
+from mqs_reports.read_BED_Mars import read_DB_Events
+from mqs_reports.read_BED_Mars import read_QuakeML_BED
+
+from marsprocessingtools import utils as marsutils
+
+from singlestationlocator import configuration
+        
+
+PHASE_LIST = [
+    'start', 'end', 'P', 'S',  'PP', 'SS',  'Pg', 'Sg', 'Peak_M2.4',
+    'Peak_MbP', 'Peak_MbS', 'x1', 'x2', 'x3', 'noise_start', 'noise_end',
+    'P_spectral_start', 'P_spectral_end', 'S_spectral_start', 'S_spectral_end',
+    'R1', 'G1']
+
+MARS_EVENT_TYPE_SCHEMA = \
+    'http://quakeml.org/vocab/marsquake/1.0/MarsEventType#'
+
+LOCATION_QUALITY_SCHEMA = \
+    'http://quakeml.org/vocab/marsquake/1.0/MarsLocationQualityType#'
+
 
 class Catalog:
     def __init__(self,
                  events=None,
                  fnam_quakeml='catalog.xml',
+                 config_file='',
+                 db=False,
                  quality=('A', 'B', 'C'),
-                 type_select='all'):
+                 type_select='all',
+                 starttime=None,
+                 endtime=None):
         """
         Class to hold catalog of multiple events. Initialized from
         dictionary with Events or QuakeML with Mars extensions.
@@ -57,27 +91,34 @@ class Catalog:
                             "higher" for HF and BB
                             "lower" for LF and BB
         """
-        from mqs_reports.read_BED_Mars import read_QuakeML_BED
+        
+        
+        
         self.events = []
+        
         if events is None:
             if type_select == 'all':
                 type_des = EVENT_TYPES
+                
             elif type_select == 'noSF':
                 type_des = ['HIGH_FREQUENCY',
                             'VERY_HIGH_FREQUENCY',
                             'LOW_FREQUENCY',
-                            'EXTREMELY_BROADBAND', 'WIDEBAND',
+                            'WIDEBAND',
                             '2.4_HZ',
                             'BROADBAND']
+                
             elif type_select == 'higher':
                 type_des = ['HIGH_FREQUENCY',
                             'VERY_HIGH_FREQUENCY',
-                            'EXTREMELY_BROADBAND', 'WIDEBAND',
+                            'WIDEBAND',
                             'BROADBAND']
+                
             elif type_select == 'lower':
                 type_des = ['LOW_FREQUENCY',
-                            'EXTREMELY_BROADBAND', 'WIDEBAND',
+                            'WIDEBAND',
                             'BROADBAND']
+                
             elif isinstance(type_select, str):
                 type_des = [type_select]
             elif isinstance(type_select, tuple):
@@ -86,28 +127,45 @@ class Catalog:
                 type_des = type_select
             else:
                 raise ValueError
+            
             if quality == 'all':
                 quality = ('A', 'B', 'C', 'D')
+                
+            quality_full = ["{}{}".format(LOCATION_QUALITY_SCHEMA, x) for x \
+                in quality]
+                
             self.types = type_des
-            self.events.extend(read_QuakeML_BED(fnam=fnam_quakeml,
-                                                event_type=type_des,
-                                                quality=quality,
-                                                phase_list=['start', 'end',
-                                                            'P', 'S',
-                                                            'PP', 'SS',
-                                                            'Pg', 'Sg',
-                                                            'Peak_M2.4',
-                                                            'Peak_MbP',
-                                                            'Peak_MbS',
-                                                            'x1', 'x2', 'x3',
-                                                            'noise_start',
-                                                            'noise_end',
-                                                            'P_spectral_start',
-                                                            'P_spectral_end',
-                                                            'S_spectral_start',
-                                                            'S_spectral_end',
-                                                            'R1', 'G1'
-                                                            ]))
+            self.types_full = ["{}{}".format(MARS_EVENT_TYPE_SCHEMA, x) for x \
+                in self.types]
+            
+            if db is False:
+                events_from_source = read_QuakeML_BED(
+                    fnam=fnam_quakeml, event_type=self.types, quality=quality,
+                    phase_list=PHASE_LIST)
+                
+                print("read {} events from QuakeML".format(
+                    len(events_from_source)))
+                
+            else:
+                
+                config = configuration.Configuration()
+                config.load(config_file)
+    
+                db_connect = marsutils.composeDbConnectString(config)
+                try:
+                    self.conn = psycopg.connect(db_connect)
+                except Exception as e:
+                    error_str = "cannot connect to SC3 database: {}".format(e)
+                    raise RuntimeError(error_str)
+                
+                events_from_source = read_DB_Events(
+                    self.conn, event_type=self.types_full, quality=quality_full,
+                    phase_list=PHASE_LIST, starttime=starttime, endtime=endtime)
+                
+                print("read {} events from DB".format(len(events_from_source)))
+            
+            self.events.extend(events_from_source)
+        
         else:
             if isinstance(events, Event):
                 events = [events]
@@ -186,7 +244,7 @@ class Catalog:
         :param endtime: maximum origin time (in UTC)
         :return:
         """
-        from fnmatch import fnmatch
+        
         events = []
         for event in self:
             # skip event if any given criterion is not matched
@@ -240,7 +298,8 @@ class Catalog:
             event.load_distance_manual(fnam_csv,
                                        overwrite=overwrite)
 
-    def calc_spectra(self, winlen_sec: float, detick_nfsamp=0, padding=False) -> None:
+    def calc_spectra(
+        self, winlen_sec: float, detick_nfsamp=0, padding=False) -> None:
         """
         Add spectra to each Event object in Catalog.
         Spectra are stored in dictionaries
@@ -1003,7 +1062,7 @@ class Catalog:
         N = np.arange(len(d)) / len(d)
         ax.plot(d, N, label=label)
 
-        ax.set_xlabel('distance / degree')
+        ax.set_xlabel('distance / deg')
         ax.set_ylabel('cumulative relative distribution of events')
 
         if label is not None:
@@ -1088,7 +1147,8 @@ class Catalog:
                                       annotations=annotations)
                 else:
                     event.fnam_report[chan] = fnam_report
-
+    
+    
     def make_report_parallel(self,
                              dir_out: str = 'reports',
                              annotations: Annotations = None):
@@ -1098,7 +1158,7 @@ class Catalog:
         :param annotations: Annotations object; used to mark glitches,
                             if available
         """
-        from multiprocessing import Pool
+        
         pool = Pool(processes=4)
         func = make_report_check_exists
         # func = print
@@ -1116,12 +1176,13 @@ class Catalog:
         for event_name, fnam in result_list_tqdm:
             self.select(name=event_name).events[0].fnam_report = fnam
 
+
     def plot_filterbanks(self,
-                         dir_out: str = 'filterbanks',
-                         annotations: Annotations = None,
-                         normtype: str = 'single_component',
-                         rotate: bool = False,
-                         smprate: str = '' # VBB_LF, SP_HF, LF+HF
+                         dir_out: str='filterbanks',
+                         annotations: Annotations=None,
+                         normtype: str='single_component',
+                         rotate: bool=False,
+                         smprate: str ='' # VBB_LF, SP_HF, LF+HF
                          ):
 
         for event in tqdm(self, file=stdout):
@@ -1149,6 +1210,7 @@ class Catalog:
                 fmin = fmin_LF
                 fmax = fmax_LF
                 df = df_LF
+            
             elif smprate == 'SP_HF':
                 if avail_rate['SP_Z'] != 100. or \
                    avail_rate['SP_N'] != 100. or \
@@ -1158,20 +1220,25 @@ class Catalog:
                 fmin = fmin_HF
                 fmax = fmax_HF
                 df = df_HF
+            
             elif smprate == 'LF+HF':
                 if avail_rate['VBB100_Z'] == 100. and \
                    avail_rate['VBB100_N'] == 100. and \
                    avail_rate['VBB100_E'] == 100.:
                     instrument = 'VBB+VBB100'
+                
                 elif avail_rate['SP_Z'] == 100. and \
                      avail_rate['SP_N'] == 100. and \
                      avail_rate['SP_E'] == 100.:
                     instrument = 'VBB+SP'
+                
                 else:
                     continue
+                
                 fmin = fmin_LF
                 fmax = fmax_HF
                 df = df_HF
+            
             else:
                 raise ValueError(f'Invalid value for smprate: {smprate}')
 
@@ -1200,13 +1267,16 @@ class Catalog:
 
             def plot_filename(ev, zoom):
                 rot = 'ZRT' if rotate else 'ZNE'
-                return pjoin(ev_folder,
-                         'filterbank_%s_Zoom_%s_SampRate_%s_Norm_%s_Rotation_%s_Data_%s.png' %
-                         (ev.name, zoom, smprate, normtype, rot, ev.wf_type) )
+                return pjoin(
+                    ev_folder,
+                    'filterbank_%s_Zoom_%s_SampRate_%s_Norm_%s_Rotation_%s_Data_%s.png' % (
+                        ev.name, zoom, smprate, normtype, rot, ev.wf_type))
 
             fnam = plot_filename(event, 'out')
 
             hasdata = False
+            nodata = True
+            
             if not pexists(fnam):
                 try:
                     event.plot_filterbank(normwindow='all', annotations=annotations,
@@ -1215,6 +1285,11 @@ class Catalog:
                                           instrument=instrument,
                                           fnam=fnam, fmin=fmin, fmax=fmax, df=df,
                                           normtype=normtype, rotate=rotate)
+                
+                except IndexError as err:
+                    print(f'Problem with filterbank for event {event.name}')
+                    print(err)
+                    
                 except AttributeError as err:
                     print(f'Problem with filterbank for event {event.name}: {err}')
                 else:
@@ -1224,6 +1299,8 @@ class Catalog:
                 fnam = plot_filename(event, 'in')
                 try:
                     if not pexists(fnam):
+                        
+                        # TODO(fab): use event.plot_parameters['filterbanks']['t_P']
                         event.plot_filterbank(starttime=t_P - 300.,
                                               endtime=t_P + 1100.,
                                               normwindow='S',
@@ -1247,22 +1324,28 @@ class Catalog:
                                                   instrument=instrument,
                                                   fmin=fmin, fmax=fmax, df=df,
                                                   normtype=normtype, rotate=rotate)
+                
                 except IndexError as err:
                     print(f'Problem with filterbank for event {event.name}')
                     print(err)
+                    
             plt.close()
 
-    def plot_spectra_unused(self,
-                     ymin: float = -240.,
-                     ymax: float = -170.,
-                     fits: dict = None,
-                     df_mute: object = 1.07) -> None:
+
+
+    def plot_spectra_unused(
+        self,
+        ymin: float=-240.,
+        ymax: float=-170.,
+        fits: dict=None,
+        df_mute: object=1.07) -> None:
         """
         Create big 6xnevent overview plot of all spectra.
         :param ymin: minimum y in dB
         :param ymax: maximum y in dB
         :param df_mute: percentage to mute around 1 Hz
         """
+        
         nevents = len(self.events)
         nevents_LF = len(self.select(event_type=['LF', 'WB', 'BB']))
         nevents_HF = len(self.select(event_type=['HF', '24', 'VF']))
@@ -1300,6 +1383,7 @@ class Catalog:
         self.select(event_type=['LF', 'BB']).plot_many_spectra(
             ax, ax_all, df_mute, fits, nevents_LF, nrows_LF,
             source=False, iaxoff=nrows_HF + 1)
+        
         # The subplots that are abused for text
         for ax_param in ax[:, [2, -1]].flatten():
             ax_param.set_frame_on(True)
@@ -1309,6 +1393,7 @@ class Catalog:
             for sp in ax_param.spines.values():
                 sp.set_visible(False)
             pass
+        
         # The subplots that act as spacing between HF and LF
         ax_all[0].set_xscale('log')
         ax_all[0].set_xlim(0.03, 5)
@@ -1511,7 +1596,7 @@ class Catalog:
         Create HTML event count table for catalog
         """
 
-        import pandas as pd
+        
 
         data = np.zeros((len(EVENT_TYPES), 5), dtype=int)
 

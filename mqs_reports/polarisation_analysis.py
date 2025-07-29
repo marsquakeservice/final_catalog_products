@@ -16,7 +16,10 @@ import matplotlib.patheffects as PathEffects
 import matplotlib.pyplot as plt
 import numpy as np
 import obspy
-import polarization.polarization as polarization
+
+#import polarization.polarization as polarization
+import mqs_reports.polarisation_calculation as polarization
+
 import seaborn as sns
 from matplotlib.colorbar import make_axes
 from matplotlib.colors import LinearSegmentedColormap

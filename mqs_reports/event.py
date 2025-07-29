@@ -15,6 +15,8 @@ Marsquake service Mars event catalogue
 """
 
 import inspect
+import warnings
+
 from glob import glob
 from os import makedirs
 from os.path import exists as pexists
@@ -22,7 +24,9 @@ from os.path import join as pjoin
 from os.path import split as psplit
 from typing import Union
 
+import matplotlib.pyplot as plt
 import numpy as np
+
 import obspy
 from obspy import UTCDateTime as utct
 from obspy.geodetics.base import kilometers2degrees, gps2dist_azimuth
@@ -34,12 +38,15 @@ from mqs_reports.constants import magnitude as mag_const
 from mqs_reports.magnitudes import fit_spectra, calc_magnitude
 from mqs_reports.utils import create_fnam_event, read_data, calc_PSD, detick, \
     calc_cwf, solify
+from mqs_reports.utils import envelope_smooth
+
 
 RADIUS_MARS = 3389.5
 CRUST_VP = 4.
 CRUST_VS = 4. / 3. ** 0.5
 LANDER_LAT = 4.5024
 LANDER_LON = 135.6234
+
 
 EVENT_TYPES_SHORT = {
     'SUPER_HIGH_FREQUENCY': 'SF',
@@ -50,17 +57,39 @@ EVENT_TYPES_SHORT = {
     'HIGH_FREQUENCY': 'HF',
     '2.4_HZ': '24'}
 
+
 EVENT_TYPES_PRINT = {
     'SUPER_HIGH_FREQUENCY': 'super high frequency',
     'VERY_HIGH_FREQUENCY': 'very high frequency',
-    'EXTREMELY_BROADBAND': 'extremely broadband',
-    'BROADBAND': 'broadband',
     'WIDEBAND': 'wideband',
+    'BROADBAND': 'broadband',
     'LOW_FREQUENCY': 'low frequency',
     'HIGH_FREQUENCY': 'high frequency',
     '2.4_HZ': '2.4 Hz'}
 
 EVENT_TYPES = EVENT_TYPES_SHORT.keys()
+
+
+DISTANCE_SIGMA_DEFAULT = 20.0
+
+FILENAME_TEMPLATE_SP_HG_SM_100SPS = "XB.ELYSE.65.EH?.D.{:04d}.{:03d}"
+FILENAME_TEMPLATE_VBB_HG_SM_100SPS = "XB.ELYSE.00.HH?.D.{:04d}.{:03d}"
+
+FILENAME_TEMPLATE_VBB_HG_SM_20SPS = "XB.ELYSE.02.BH?.D.{:04d}.{:03d}"
+FILENAME_TEMPLATE_VBB_HG_SM_10SPS = "XB.ELYSE.03.BH?.D.{:04d}.{:03d}"
+
+FILENAME_TEMPLATE_VBB_LG_EM_100SPS = "XB.ELYSE.15.HL?.D.{:04d}.{:03d}"
+FILENAME_TEMPLATE_VBB_LG_SM_20SPS = "XB.ELYSE.07.BL?.D.{:04d}.{:03d}"
+
+FILENAME_TEMPLATE_PROCESSED_BH = "XB.{}.{}.BH?.D.{:04d}.{:03d}"
+
+FILTERBANK_CORNERS_COUNT = 8
+FILTERBANK_PLOT_SCALE_FACTOR = 4
+
+PICK_METHOD_ALIGNED = 'aligned'
+
+# ELYSE
+STATION_USE = 'ELYDL'
 
 
 class Event:
@@ -77,12 +106,15 @@ class Event:
                  sso_distance_pdf: float,
                  sso_origin_time: str,
                  mars_event_type: str,
-                 origin_time: str):
+                 origin_time: str,
+                 picks_methodid: dict):
+        
         self.name = name.strip()
         self.publicid = publicid
         self.origin_publicid = origin_publicid
         self.picks = picks
         self.picks_sigma = picks_sigma
+        self.picks_methodid = picks_methodid
         self.quality = quality[-1]
         self.mars_event_type = mars_event_type.split('#')[-1]
 
@@ -94,6 +126,7 @@ class Event:
                                  utct(self.picks['start']))
             self.duration_s = utct(self.picks['end']) - utct(
                 self.picks['start'])
+            
         except TypeError as e:
             print('incomplete picks for event %s' % self.name)
             print(self.picks)
@@ -109,6 +142,7 @@ class Event:
         # Case that location was determined from BAZ and distance
         if (abs(self.latitude - LANDER_LAT) > 1e-3 and
                 abs(self.longitude - LANDER_LON) > 1e-3):
+            
             dist_km, az, baz = gps2dist_azimuth(lat1=self.latitude,
                                                 lon1=self.longitude,
                                                 lat2=LANDER_LAT,
@@ -121,16 +155,22 @@ class Event:
             self.baz = baz
             self.az = az
             self.origin_time = utct(origin_time)
-            try:
-                self.calc_distance_sigma_from_pdf()
-            except TypeError as e:
-                print(self)
-                raise e
+            
+            self.calc_distance_sigma_from_pdf()
+            
+#             try:
+#                 self.calc_distance_sigma_from_pdf()
+#             
+#             except TypeError as e:
+#                 print(self)
+#                 raise e
+            
             self.distance_type = 'GUI'
 
         # Case that distance exists, but not BAZ. Then, distance and origin
         # time should be taken from SSO (ie the locator PDF output)
         elif sso_distance is not None:
+            
             self.origin_time = utct(sso_origin_time)
             self.distance = sso_distance
             self.distance_pdf = sso_distance_pdf
@@ -140,14 +180,18 @@ class Event:
 
         # Case that distance can be estimated from Pg/Sg arrivals
         elif self.mars_event_type_short in ['HF', 'SF', 'VF', '24']:
+            
             try:
-                distance_tmp, otime_tmp, distance_sigma_tmp = self.calc_distance()
+                distance_tmp, otime_tmp, distance_sigma_tmp = \
+                    self.calc_distance()
+            
             except ValueError as e:
                 print('Problem with event %s' % self.name)
                 print(e)
                 self.distance = None
                 self.distance_sigma = None
                 self.origin_time = utct(origin_time)
+            
             else:
                 if distance_tmp is not None:
                     self.distance = distance_tmp
@@ -177,6 +221,8 @@ class Event:
         self.spectra = None
         self.spectra_SP = None
 
+        self.plot_parameters = dict()
+        
         self.fnam_report = dict()
         self.fnam_polarisation = dict()
 
@@ -185,12 +231,19 @@ class Event:
         return EVENT_TYPES_SHORT[self.mars_event_type]
 
     def __str__(self):
-        if self.distance is not None:
+        if self.distance is not None and self.baz is not None:
             string = "Event {name} ({mars_event_type_short}-{quality}), " \
-                     "distance: {distance:5.1f} degree ({distance_type})"
+                "distance: {distance:5.1f} deg ({distance_type}), "\
+                "BAZ: {baz:3.0f} deg"
+                 
+        elif self.distance is not None:
+            string = "Event {name} ({mars_event_type_short}-{quality}), " \
+                     "distance: {distance:5.1f} deg ({distance_type})"
+        
         else:
             string = "Event {name} ({mars_event_type_short}-{quality}), " \
                      "unknown distance"
+                 
         return string.format(**dict(inspect.getmembers(self)))
 
     def load_distance_manual(self,
@@ -209,10 +262,12 @@ class Event:
                 if overwrite or (self.distance is None):
                     if self.name == row['name']:
                         self.distance = float(row['distance'])
+                        
                         if self.distance_sigma is None:
                             self.distance_sigma = 20.
                         self.origin_time = utct(row['time'])
                         self.distance_type = 'aligned'
+                        
                         if 'sigma_dist' in row:
                             self.distance_sigma = float(row['sigma_dist'])
                         else:
@@ -297,14 +352,165 @@ class Event:
             return None, None
 
     def calc_distance_sigma_from_pdf(self):
+        
         from mqs_reports.utils import uncertainty_from_pdf
 
-        sigma_low, sigma_up = uncertainty_from_pdf(
-            variable=self.distance_pdf[0],
-            p=self.distance_pdf[1])
-        self.distance_sigma = (sigma_up - sigma_low) / 2.
-        pass
+        try:
+            sigma_low, sigma_up = uncertainty_from_pdf(
+                variable=self.distance_pdf[0],
+                p=self.distance_pdf[1])
+            
+            self.distance_sigma = (sigma_up - sigma_low) / 2.0
+            
+        except Exception as e:
+            print("cannot get distance sigma from PDF: {}".format(e))
+            self.distance_sigma = DISTANCE_SIGMA_DEFAULT
+    
+    def _set_plot_parameters(self):
+        """
+        """
+        
+        print("setting plot parameters")
+        
+        # filterbanks setting per event
+        self.plot_parameters['filterbanks'] = dict()
+        
+        # defaults
+        fmax_LF = 8.0
+        fmin_LF = 1.0 / 32.0
+        fmax_HF = 16.0
+        fmin_HF = 1.0 / 2.0
+        df_LF = 2.0**0.5
+        df_HF = 2.0**0.25
+        
+        # plot method defaults
+        # fmin = 1.0 / 64
+        # fmax = 4.0
+        # df = 2.0**0.5
+        
+        if self.mars_event_type_short in ['LF', 'WB', 'BB']:
+            
+            self.plot_parameters['filterbanks']['instrument'] = 'VBB'
+                
+            if len(self.picks['S']) * len(self.picks['P']) > 0:
+                
+                self.plot_parameters['filterbanks']['t_S'] = utct(
+                    self.picks['S'])
+                self.plot_parameters['filterbanks']['t_P'] = utct(
+                    self.picks['P'])
+            
+            else:
+                self.plot_parameters['filterbanks']['t_S'] = None
+                self.plot_parameters['filterbanks']['t_P'] = utct(
+                    self.starttime)
+            
+            self.plot_parameters['filterbanks']['fmin'] = fmin_LF
+            self.plot_parameters['filterbanks']['fmax'] = fmax_LF
+            self.plot_parameters['filterbanks']['df'] = df_LF
+            
+        elif self.mars_event_type_short in ['HF', '24']:
+            
+            self.plot_parameters['filterbanks']['instrument'] = 'SP'
+            
+            if len(self.picks['Sg']) * len(self.picks['Pg']) > 0:
+                
+                self.plot_parameters['filterbanks']['t_S'] = utct(
+                    self.picks['Sg'])
+                self.plot_parameters['filterbanks']['t_P'] = utct(
+                    self.picks['Pg'])
+                
+            else:
+                self.plot_parameters['filterbanks']['t_S'] = None
+                self.plot_parameters['filterbanks']['t_P'] = utct(
+                    self.starttime)
+            
+            self.plot_parameters['filterbanks']['fmin'] = fmin_HF
+            self.plot_parameters['filterbanks']['fmax'] = fmax_HF
+            self.plot_parameters['filterbanks']['df'] = df_HF
 
+        elif self.mars_event_type_short == 'VF':
+            
+            if self.available_sampling_rates()['SP_Z'] == 100.0:
+                    
+                self.plot_parameters['filterbanks']['instrument'] = 'both'
+                
+                if len(self.picks['Sg']) * len(self.picks['Pg']) > 0:
+                    
+                    self.plot_parameters['filterbanks']['t_S'] = utct(
+                        self.picks['Sg'])
+                    self.plot_parameters['filterbanks']['t_P'] = utct(
+                        self.picks['Pg'])
+                
+                else:
+                    self.plot_parameters['filterbanks']['t_S'] = None
+                    self.plot_parameters['filterbanks']['t_P'] = utct(
+                        self.starttime)
+                
+                self.plot_parameters['filterbanks']['fmin'] = 1.0 / 8.0
+                self.plot_parameters['filterbanks']['fmax'] = 32.0 * np.sqrt(2.0)
+                self.plot_parameters['filterbanks']['df'] = df_HF
+                
+            else:
+                
+                self.plot_parameters['filterbanks']['instrument'] = 'SP'
+                
+                if len(self.picks['Sg']) * len(self.picks['Pg']) > 0:
+                    
+                    self.plot_parameters['filterbanks']['t_S'] = utct(
+                        self.picks['Sg'])
+                    self.plot_parameters['filterbanks']['t_P'] = utct(
+                        self.picks['Pg'])
+                
+                else:
+                    self.plot_parameters['filterbanks']['t_S'] = None
+                    self.plot_parameters['filterbanks']['t_P'] = utct(
+                        self.starttime)
+                    
+                self.plot_parameters['filterbanks']['fmin'] = 1.0 / 8.0
+                self.plot_parameters['filterbanks']['fmax'] = 10.0
+                self.plot_parameters['filterbanks']['df'] = df_HF
+
+        else: 
+            
+            # Super High Frequency
+            self.plot_parameters['filterbanks']['instrument'] = 'SP'
+            
+            self.plot_parameters['filterbanks']['t_S'] = None
+            self.plot_parameters['filterbanks']['t_P'] = utct(self.starttime)
+            
+            self.plot_parameters['filterbanks']['fmin'] = 0.5
+            self.plot_parameters['filterbanks']['fmax'] = 32.0 * np.sqrt(2.0)
+            self.plot_parameters['filterbanks']['df'] = df_HF
+    
+    
+    def add_rotated_traces(self):
+        
+        # Add rotated phases to waveform objects
+        # Check if waveform exists (self.waveforms_VBB)
+        
+        if self.waveforms_VBB is not None:
+            
+            st_rot = self.waveforms_VBB.copy()
+            st_rot.rotate('NE->RT', back_azimuth=self.baz)
+            
+            for chan in ['?HT', '?HR']:
+                try:
+                    self.waveforms_VBB += st_rot.select(channel=chan)[0]
+                except IndexError:
+                    print("add_rotated_traces: cannot select channel {} in "\
+                        "VBB".format(chan))
+                    
+        if self.waveforms_SP is not None:
+            st_rot = self.waveforms_SP.copy()
+            st_rot.rotate('NE->RT', back_azimuth=self.baz)
+            
+            for chan in ['?HT', '?HR']:
+                try:
+                    self.waveforms_SP += st_rot.select(channel=chan)[0]
+                except IndexError:
+                    print("add_rotated_traces: cannot select channel {} in "\
+                        "SP".format(chan))
+    
     def read_waveforms(self,
                        inv: obspy.Inventory,
                        sc3dir: str,
@@ -312,8 +518,11 @@ class Event:
                        wf_type: str = 'RAW', # RAW, DEGLITCHED, DENOISED
                        kind: str = 'DISP',
                        fmin_SP: float = 0.5,
-                       fmin_VBB: float = 1. / 30.,
-                       t_pad_VBB:float = 300.) -> None:
+                       fmin_VBB: float = 1.0 / 30.0,
+                       t_pad_VBB: float = 300.0,
+                       station: str='ELYSE',
+                       location_code: str='00',
+                       remove_response: bool=True) -> None:
         """
         Wrapper to check whether local copy of corrected waveform exists and
         read it from sc3dir otherwise (and create local copy)
@@ -322,34 +531,56 @@ class Event:
         :param kind: 'DISP', 'VEL' or 'ACC'. Note that many other functions
                      expect the data to be in displacement
         """
+
         if not self.read_data_local(wf_type, dir_cache=event_tmp_dir):
+            
+            print("no local copy of waveform found, reading from SDS archive")
+            
             self.read_data_from_sc3dir(inv, sc3dir, wf_type, kind,
                                        fmin_SP=fmin_SP,
                                        fmin_VBB=fmin_VBB,
                                        tpre_VBB=t_pad_VBB)
+            
             self.write_data_local(wf_type, dir_cache=event_tmp_dir)
 
         self._waveforms_read = True
         self.wf_type = wf_type
         self.kind = kind
+        
+        if self.baz is not None:
+            self.add_rotated_traces()
+        
+        # set plot parameters
+        self._set_plot_parameters()
+        
 
     def read_data_local(self, wf_type: str, dir_cache: str = 'events') -> bool:
+
         """
         Read waveform data from local cache structure
         :param dir_cache: path to local cache
         :return: True if waveform was found in local cache
         """
         event_path = pjoin(dir_cache, '%s' % self.name)
-        waveform_path = pjoin(event_path, 'waveforms')
+        
+        waveform_path = pjoin(
+            event_path, 'waveforms', "{}.{}".format(station, location_code))
+        
         origin_path = pjoin(event_path, 'origin_id.txt')
+        
         success = False
+
         VBB_path = pjoin(waveform_path, 'waveforms_VBB_%s.mseed' % wf_type)
         VBB100_path = pjoin(waveform_path, 'waveforms_VBB100_%s.mseed' % wf_type)
         SP_path = pjoin(waveform_path, 'waveforms_SP_%s.mseed' % wf_type)
+
         if len(glob(origin_path)) > 0:
+            
             with open(origin_path, 'r') as f:
                 origin_local = f.readline().strip()
+            
             if origin_local == self.origin_publicid:
+                
                 if len(glob(VBB_path)):
                     self.waveforms_VBB = obspy.read(VBB_path)
                     success = True
@@ -367,34 +598,49 @@ class Event:
                     success = True
                 else:
                     self.waveforms_SP = None
+        
         return success
 
+
     def write_data_local(self, wf_type: str, dir_cache: str = 'events'):
+
         """
         Store waveform data in local cache structure
         @TODO: Save parameters (kind, filter) into file name
         :param dir_cache: path to local cache
         :return:
         """
+        
+        # NOTE(fab): these path definitions are redundant
         event_path = pjoin(dir_cache, '%s' % self.name)
-        waveform_path = pjoin(event_path, 'waveforms')
+        waveform_path = pjoin(
+            event_path, 'waveforms', "{}.{}".format(station, location_code))
+        
         origin_path = pjoin(event_path, 'origin_id.txt')
+        
         makedirs(waveform_path, exist_ok=True)
 
         with open(origin_path, 'w') as f:
             f.write(self.origin_publicid)
+        
         if self.waveforms_VBB is not None and len(self.waveforms_VBB) > 0:
-            self.waveforms_VBB.write(pjoin(waveform_path,
-                                           'waveforms_VBB_%s.mseed' % wf_type),
-                                     format='MSEED')
+            self.waveforms_VBB.write(
+                pjoin(
+                    waveform_path, 'waveforms_VBB_%s.mseed' % wf_type), 
+                    format='MSEED')
+                
         if self.waveforms_VBB100 is not None and len(self.waveforms_VBB100) > 0:
-            self.waveforms_VBB100.write(pjoin(waveform_path,
-                                           'waveforms_VBB100_%s.mseed' % wf_type),
-                                     format='MSEED')
+            self.waveforms_VBB100.write(
+                pjoin(
+                    waveform_path, 'waveforms_VBB100_%s.mseed' % wf_type), 
+                    format='MSEED')
+
         if self.waveforms_SP is not None and len(self.waveforms_SP) > 0:
-            self.waveforms_SP.write(pjoin(waveform_path,
-                                          'waveforms_SP_%s.mseed' % wf_type),
-                                    format='MSEED')
+            self.waveforms_SP.write(
+                pjoin(
+                    waveform_path, 'waveforms_SP_%s.mseed' % wf_type), 
+                    format='MSEED')
+
 
     def read_data_from_sc3dir(self,
                               inv: obspy.Inventory,
@@ -404,7 +650,10 @@ class Event:
                               fmin_SP=0.5,
                               fmin_VBB=1. / 30.,
                               tpre_SP: float = 100,
-                              tpre_VBB: float = 1200.) -> None:
+                              tpre_VBB: float = 1200.0,
+                              station: str='ELYSE',
+                              location_code: str='00',
+                              remove_response: bool=True) -> None:
         """
         Read waveform data into event object
         :param inv: obspy.Inventory object to use for instrument correction
@@ -414,6 +663,10 @@ class Event:
         :param tpre_SP: prefetch time for SP data (default: 100 sec)
         :param tpre_VBB: prefetch time for VBB data (default: 900 sec)
         """
+
+        
+        self.kind = kind
+
         if len(self.picks['noise_start']) > 0:
             twin_start = min((utct(self.picks['start']),
                               utct(self.picks['noise_start'])))
@@ -448,7 +701,7 @@ class Event:
                               tpre_VBB: float,
                               twin_start: float,
                               twin_end: float) -> None:
-        station='ELYSE'
+        station = 'ELYSE'
 
         #
         # Read SP
@@ -505,14 +758,18 @@ class Event:
                                                  twin_end + tpre_VBB])
             if self.waveforms_VBB is not None and \
                     len(self.waveforms_VBB) == 3:
+
                 success_VBB = True
 
-        if not success_VBB:
+        if station == 'ELYSE' and not success_VBB:
             # Try for 03.BH? (10sps VBB)
+
             filenam_VBB = 'XB.ELYSE.03.BH?.D.%04d.%03d'
+
             fnam_VBB = create_fnam_event(
                 filenam_inst=filenam_VBB, station=station,
                 sc3dir=sc3dir, time=self.picks['start'])
+
             self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
                                            kind=kind,
                                            fmin=fmin_VBB,
@@ -525,9 +782,11 @@ class Event:
         if not success_VBB:
             # Try for 15.BL? (10sps VBB)
             filenam_VBB = 'XB.ELYSE.15.HL?.D.%04d.%03d'
+
             fnam_VBB = create_fnam_event(
                 filenam_inst=filenam_VBB, station=station,
                 sc3dir=sc3dir, time=self.picks['start'])
+
             self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
                                            kind=kind,
                                            fmin=fmin_VBB,
@@ -535,14 +794,18 @@ class Event:
                                                  twin_end + tpre_VBB])
             if self.waveforms_VBB is not None and \
                     len(self.waveforms_VBB) == 3:
+
                 success_VBB = True
 
-        if not success_VBB:
+        if station == 'ELYSE' and not success_VBB:
             # Try for 07.BL? (20sps VBB low gain)
+
             filenam_VBB = 'XB.ELYSE.07.BL?.D.%04d.%03d'
+
             fnam_VBB = create_fnam_event(
                 filenam_inst=filenam_VBB, station=station,
                 sc3dir=sc3dir, time=self.picks['start'])
+
             self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
                                            kind=kind,
                                            fmin=fmin_VBB,
@@ -550,9 +813,10 @@ class Event:
                                                  twin_end + tpre_VBB])
             if self.waveforms_VBB is not None and \
                     len(self.waveforms_VBB) == 3:
+
                 success_VBB = True
 
-        if not success_VBB:
+        if station == 'ELYSE' and not success_VBB:
             self.waveforms_VBB = None
 
         if self.waveforms_VBB is None and self.waveforms_SP is None:
@@ -627,10 +891,14 @@ class Event:
 
 
     def available_sampling_rates(self):
+        
         available = dict()
+        
         channels = {'VBB_Z': '??Z',
                     'VBB_N': '??N',
+
                     'VBB_E': '??E'}
+
         for chan, seed in channels.items():
             available[chan] = None
             if self.waveforms_VBB is not None:
@@ -661,6 +929,7 @@ class Event:
 
         return available
 
+
     def calc_spectra(self,
                      winlen_sec,
                      detick_nfsamp=0,
@@ -668,6 +937,7 @@ class Event:
                      time_windows=None,
                      rotate: bool = False,
                      instrument: str = ''):
+
         """
         Add spectra to event object.
         Spectra are stored in dictionaries
@@ -682,9 +952,12 @@ class Event:
         :param padding: Zeropad signal by factor of 2 to smoothen spectra?
         """
 
+        print("calculating spectra")
+        
         if not self._waveforms_read:
             raise RuntimeError('waveforms not read in Event object\n' +
                                'Call Event.read_waveforms() first.')
+
         if time_windows is not None:
             # Get the time windows from the external source.
             # Start and end are always from the catalog
@@ -732,12 +1005,11 @@ class Event:
             if st_HF is not None:
                 st_HF.rotate('NE->RT', back_azimuth=self.baz)
 
+
         self.spectra = dict()
         self.spectra_SP = dict()
-        variables = ('all',
-                     'noise',
-                     'P',
-                     'S')
+        variables = ('all', 'noise', 'P', 'S')
+        
         for twin, variable in zip(twins, variables):
             if len(twin[0]) == 0:
                 continue
@@ -1357,6 +1629,7 @@ class Event:
                              zorder=50)
 
         self.mark_phases(ax, tref=utct(self.picks['P']))
+        
         ax[0].set_yticks(range(0, nangles))
         ax[0].set_yticklabels(angles)
         ax[0].set_xlim(-50, 550)
@@ -1365,6 +1638,7 @@ class Event:
         ax[0].set_ylabel('Rotation angle')
         ax[0].set_title('Radial component')
         ax[1].set_title('Transversal component')
+        
         fig.suptitle('Event %s (%5.3f-%5.3f Hz)' %
                      (self.name, fmin, fmax))
         fig.savefig('rotations_%s_%3.1f_%3.1f_sec.png' %
@@ -1375,7 +1649,9 @@ class Event:
         for a in ax:
             for pick in ['P', 'S', 'Pg', 'Sg', 'x1', 'x2', 'x3', 'PP', 'SS']:
                 try:
-                    if pick in self.picks:
+                    if pick in self.picks and \
+                        self.picks_methodid[pick] != PICK_METHOD_ALIGNED:
+                        
                         x = utct(self.picks[pick]) - tref
                         a.axvline(x, c='darkred', ls='dashed')
                         a.annotate(xy=(x, -0.5), text=' ' + pick,
@@ -1383,11 +1659,14 @@ class Event:
                                    horizontalalignment='left')
                 except TypeError:
                     pass
+            
             for pick in ['start', 'end']:
                 a.axvline(utct(self.picks[pick]) - tref,
                           c='darkgreen', ls='dashed')
 
+
     def plot_filterbank(self,
+
                         fmin: float = 1. / 64,
                         fmax: float = 4.,
                         df: float = 2 ** 0.5,
@@ -1405,9 +1684,13 @@ class Event:
                         instrument: str = '',
                         f_VBB_SP_transition = 7.5,
                         fnam: str = None):
-        import matplotlib.pyplot as plt
-        import warnings
-        from mqs_reports.utils import envelope_smooth
+
+        """
+        log: plot waveforms in logarithmic scale 
+        waveform: plot waveforms in addition to envelopes
+        """
+        
+        
 
         def mark_glitch(ax: list,
                         x0: float, x1: float,
@@ -1423,26 +1706,57 @@ class Event:
         fig, ax = plt.subplots(nrows=1, ncols=3, sharex='all', sharey='all',
                                figsize=(10, 6))
 
+        if instrument is None:
+            instrument = self.plot_parameters['filterbanks']['instrument']
+        
         # Determine frequencies
+        if fmin is None:
+            fmin = self.plot_parameters['filterbanks']['fmin']
+            
+        if fmax is None:
+            fmax = self.plot_parameters['filterbanks']['fmax']
+ 
+        if df is None:
+            df = self.plot_parameters['filterbanks']['df']                
+        
         nfreqs = int(np.round(np.log(fmax / fmin) / np.log(df), decimals=0) + 1)
         freqs = np.geomspace(fmin, fmax + 0.001, nfreqs)
-
+        
+        f0 = freqs / df
+        f1 = freqs * df
+        
+        # print(self.waveforms_VBB)
+        # print(self.waveforms_SP)
+        
         # Reference time
-        if 'P' in self.picks and len(self.picks['P']) > 0:
+        if 'P' in self.picks and len(self.picks['P']) > 0 and \
+            self.picks_methodid['P'] != PICK_METHOD_ALIGNED:
+                
             t_ref = utct(self.picks['P'])
             t_ref_type = 'P'
-        elif 'PP' in self.picks and len(self.picks['PP']) > 0:
+        
+        elif 'PP' in self.picks and len(self.picks['PP']) > 0 and \
+            self.picks_methodid['PP'] != PICK_METHOD_ALIGNED:
+                
             t_ref = utct(self.picks['PP'])
             t_ref_type = 'PP'
+        
         else:
             t_ref = self.starttime
             t_ref_type = 'start time'
 
+        if self.waveforms_VBB is None:
+            print("plot_filterbank: no VBB waveform")
+            plt.close()
+            return None
+        
         if instrument == 'VBB':
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
+
             st_LF_desc = f'LF={st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
             st_HF_desc = ''
+        
         elif instrument == 'VBB100':
             st_LF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
@@ -1467,6 +1781,7 @@ class Event:
             raise ValueError(f'Invalid value for instrument: {instrument}')
 
         if rotate:
+
             st_HF.rotate('NE->RT', back_azimuth=self.baz)
             st_LF.rotate('NE->RT', back_azimuth=self.baz)
 
@@ -1476,10 +1791,12 @@ class Event:
         tend_norm = dict(P=self.picks['P_spectral_end'],
                          S=self.picks['S_spectral_end'],
                          all=self.endtime)
+        
         if normwindow == 'S' and len(tstart_norm[normwindow]) == 0:
             normwindow = 'P'
             if len(tstart_norm[normwindow]) == 0:
                 normwindow = 'all'
+        
         tstart_norm = utct(tstart_norm[normwindow])
         tend_norm = utct(tend_norm[normwindow])
 
@@ -1492,9 +1809,15 @@ class Event:
         if tmax_plot is None:
             tmax_plot = endtime - t_ref
 
+        # print(t_ref)
+        # print(starttime)
+        # print(endtime)
+        
         for st in (st_HF, st_LF):
-            st.trim(starttime=utct(starttime) - 1. / fmin,
-                    endtime=utct(endtime) + 1. / fmin)
+            st.trim(
+                starttime=utct(starttime) - 1.0/fmin,
+                endtime=utct(endtime) + 1.0/fmin)
+
 
         maxfac_all = None
         offset_all = None
@@ -1506,11 +1829,23 @@ class Event:
             offset_tr[trid] = None
 
         freqs_data = {}
+        
+        norm_factors = [[], [], []]
+        norm_offsets = [[], [], []]
+        envelopes = [[], [], []]
+        waveform_tr = [[], [], []]
+        
+        xvec_env = []
+        xvec = []
+        
         for ifreq, fcenter in enumerate(freqs):
 
             f0 = fcenter / df
             f1 = fcenter * df
 
+
+            skip_freq_bin = False
+            
             if fcenter < f_VBB_SP_transition:
                 st_filt = st_LF.copy()
             else:
@@ -1519,8 +1854,10 @@ class Event:
             try:
                 with warnings.catch_warnings():
                     warnings.simplefilter('ignore')
+
                     st_filt.filter('bandpass', freqmin=f0, freqmax=f1,
                                    corners=8)
+                    
             except ValueError:  # If f0 is above Nyquist
                 print('No 20sps data available for event %s' % self.name)
                 continue
@@ -1599,7 +1936,8 @@ class Event:
                 continue
 
             if fcenter != freqs_data[ifreq]['fcenter']:
-               raise RuntimeError('Internal logic error while bulding filterbanks')
+               raise RuntimeError(
+                   'Internal logic error while bulding filterbanks')
 
             tr_Z     = freqs_data[ifreq]['tr']['Z']
             tr_Z_env = freqs_data[ifreq]['tr_env']['Z']
@@ -1626,21 +1964,25 @@ class Event:
 
                 tr       = freqs_data[ifreq]['tr'][trid]
                 tr_env   = freqs_data[ifreq]['tr_env'][trid]
+
                 # ax[itr].plot(xvec_env,
                 #              iangle + tr_Z_env.data / maxfac, c='grey',
                 #              lw=1)
                 # ax[itr].fill_between(x=xvec_env,
                 #                      y1=iangle + tr_Z_env.data / maxfac,
                 #                      y2=iangle, color='darkgrey')
+
                 if log:
                     ax[itr].plot(xvec_env,
                                  ifreq + np.log(tr_env.data / maxfac) / 3,
                                  lw=1.0, zorder=50)
                 else:
+
                     if waveforms:
                         color = 'k'
                     else:
                         color = 'C%d' % (ifreq % 10)
+
 
                     ax[itr].plot(xvec_env,
                                  ifreq + (tr_env.data - offset) / maxfac,
@@ -1652,6 +1994,23 @@ class Event:
                                      c='C%d' % (ifreq % 10),
                                      lw=0.5, zorder=50 - ifreq)
 
+
+                    # plot envelopes
+                    ax[itr].plot(
+                        xvec_env[ifreq],
+                        ifreq + \
+                            (envelopes[itr][ifreq].data - offset) / max_maxfac,
+                        c=color, lw=0.5, zorder=80)
+                    
+                    if waveforms:
+                        # plot waveforms
+                        ax[itr].plot(
+                            xvec[ifreq],
+                            ifreq + waveform_tr[itr][ifreq].data / max_maxfac,
+                            c='C%d' % (ifreq % 10),
+                            lw=0.5, zorder=50 - ifreq)
+        
+        # external time markers
         if timemarkers is not None:
             for phase, time in timemarkers.items():
                 if tmin_plot < time < tmax_plot:
@@ -1659,12 +2018,15 @@ class Event:
                         a.axvline(x=time, ls='dashed')
                         a.text(x=time, y=nfreqs, s=phase)
 
+        # phase markers: phases darkred, start/end darkgreen
         self.mark_phases(ax, tref=t_ref)
 
         if annotations is not None:
             annotations_event = annotations.select(
                 starttime=utct(self.picks['start']) - 180.,
                 endtime=utct(self.picks['end']) + 180.)
+            
+            # mark every annotation time window with vertical light grey box
             if len(annotations_event) > 0:
                 x0s = []
                 x1s = []
@@ -1679,11 +2041,13 @@ class Event:
                 for x0, x1 in zip(x0s, x1s):
                     mark_glitch(ax, x0, x1, fc='lightgrey',
                                 zorder=-3, alpha=0.8)
+            
+            # mark overall annotation(?) time window with horizontal grey box
             mark_glitch(ax,
                         x0=tstart_norm - float(t_ref),
                         x1=tend_norm - float(t_ref),
-                        ymin=-1, height=0.3, fc='grey', alpha=0.8
-                        )
+                        ymin=-1, height=0.3, fc='grey', alpha=0.8)
+        
         ax[0].set_yticks(range(0, nfreqs))
         np.set_printoptions(precision=3)
         ticklabels = []
@@ -1693,6 +2057,7 @@ class Event:
             else:
                 ticklabels.append(f'1/{1. / freq:.1f}')
         ax[0].set_yticklabels(ticklabels)
+        
         for a in ax:
             # a.set_xticks(np.arange(-300, 1000, 100), minor=False)
             a.set_xticks(np.arange(-300, 3000, 25), minor=True)
@@ -1700,34 +2065,51 @@ class Event:
                 a.set_xlabel('time after P-wave')
             else:
                 a.set_xlabel('time after start time')
+
             a.grid(visible=True, which='both', axis='x', lw=0.2, alpha=0.3)
             a.grid(visible=True, which='major', axis='y', lw=0.2, alpha=0.3)
+
             a.axhline(y=np.argmin(abs(freqs - 1.)),
                       ls='dashed', lw=1.0, c='k')
+        
         ax[0].set_xlim(tmin_plot, tmax_plot)
         ax[0].set_ylim(-1.5, nfreqs + 1.5)
         ax[0].set_ylabel('frequency / Hz')
         ax[0].set_title('Vertical')
+
         if rotate:
+
             ax[1].set_title('Radial')
             ax[2].set_title('Transverse')
         else:
             ax[1].set_title('North/South')
             ax[2].set_title('East/West')
-        fig.suptitle( ('Event=%s LQ=%s Type=%s (%5.3f-%5.3f Hz) %s %s' %  (self.name, self.quality, self.mars_event_type_short, fmin, fmax, st_LF_desc, st_HF_desc) )
-                , fontsize='x-small')
+
+        # fig.suptitle( ('Event=%s LQ=%s Type=%s (%5.3f-%5.3f Hz) %s %s' %  (
+        #     self.name, self.quality, self.mars_event_type_short, fmin, fmax, st_LF_desc, st_HF_desc)),
+        #     fontsize='x-small')
+
+        
+        fig.suptitle(("Event {} {}/{} ({:5.3f}-{:5.3f} Hz), {} {} {}.{}".format(
+            self.name, self.mars_event_type_short, self.quality, fmin, fmax, 
+            fmax, st_LF_desc, st_HF_desc, station_code, location_code)), 
+            fontsize='x-small')
+        
+
         plt.subplots_adjust(top=0.911,
                             bottom=0.097,
                             left=0.089,
                             right=0.972,
                             hspace=0.2,
                             wspace=0.116)
+        
         if fnam is None:
             plt.show()
         else:
-            fig.savefig(fnam,
-                        dpi=200)
+            fig.savefig(fnam, dpi=200)
+        
         plt.close()
+
 
     def plot_filterbank_phase(self,
                               comp: str,
@@ -1753,12 +2135,18 @@ class Event:
         freqs = np.geomspace(fmin, fmax + 0.001, nfreqs)
 
         # Reference time
-        if 'P' in self.picks and len(self.picks['P']) > 0:
+        if 'P' in self.picks and len(self.picks['P']) > 0 and \
+            self.picks_methodid['P'] != PICK_METHOD_ALIGNED:
+                
             t_ref = utct(self.picks['P'])
             t_ref_type = 'P'
-        elif 'PP' in self.picks and len(self.picks['PP']) > 0:
+            
+        elif 'PP' in self.picks and len(self.picks['PP']) > 0 and \
+            self.picks_methodid['P'] != PICK_METHOD_ALIGNED:
+            
             t_ref = utct(self.picks['PP'])
             t_ref_type = 'PP'
+        
         else:
             t_ref = self.starttime
             t_ref_type = 'start time'
@@ -1820,8 +2208,10 @@ class Event:
                     #                freqmin=f0, freqmax=f1,
                     #                zerophase=zerophase,
                     #                corners=corners)
+            
             except ValueError:  # If f0 is above Nyquist
                 print('No 20sps data available for event %s' % self.name)
+            
             else:
                 st_filt.trim(starttime=utct(starttime),
                              endtime=utct(endtime))
