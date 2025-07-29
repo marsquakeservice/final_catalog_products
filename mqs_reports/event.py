@@ -532,7 +532,9 @@ class Event:
                      expect the data to be in displacement
         """
 
-        if not self.read_data_local(wf_type, dir_cache=event_tmp_dir):
+        if not self.read_data_local(
+            wf_type, dir_cache=event_tmp_dir, station=station, 
+            location_code=location_code):
             
             print("no local copy of waveform found, reading from SDS archive")
             
@@ -554,7 +556,9 @@ class Event:
         self._set_plot_parameters()
         
 
-    def read_data_local(self, wf_type: str, dir_cache: str = 'events') -> bool:
+    def read_data_local(
+        self, wf_type: str, dir_cache: str='events', station: str='ELYSE',
+        location_code: str='00') -> bool:
 
         """
         Read waveform data from local cache structure
@@ -602,7 +606,9 @@ class Event:
         return success
 
 
-    def write_data_local(self, wf_type: str, dir_cache: str = 'events'):
+    def write_data_local(
+        self, wf_type: str, dir_cache: str='events', station: str='ELYSE',
+        location_code: str='00'):
 
         """
         Store waveform data in local cache structure
