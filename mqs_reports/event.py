@@ -742,6 +742,7 @@ class Event:
                                        fmin=fmin_VBB,
                                        twin=[twin_start - tpre_VBB,
                                              twin_end + tpre_VBB])
+        
         if self.waveforms_VBB100 is not None and \
                 len(self.waveforms_VBB100) != 3:
             self.waveforms_VBB100 = None
@@ -757,11 +758,13 @@ class Event:
             fnam_VBB = create_fnam_event(
                 filenam_inst=filenam_VBB, station=station,
                 sc3dir=sc3dir, time=self.picks['start'])
+            
             self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
                                            kind=kind,
                                            fmin=fmin_VBB,
                                            twin=[twin_start - tpre_VBB,
                                                  twin_end + tpre_VBB])
+            
             if self.waveforms_VBB is not None and \
                     len(self.waveforms_VBB) == 3:
 
@@ -803,7 +806,7 @@ class Event:
 
                 success_VBB = True
 
-        if station == 'ELYSE' and not success_VBB:
+        if not success_VBB:
             # Try for 07.BL? (20sps VBB low gain)
 
             filenam_VBB = 'XB.ELYSE.07.BL?.D.%04d.%03d'
@@ -822,12 +825,13 @@ class Event:
 
                 success_VBB = True
 
-        if station == 'ELYSE' and not success_VBB:
+        if not success_VBB:
             self.waveforms_VBB = None
 
         if self.waveforms_VBB is None and self.waveforms_SP is None:
-            raise FileNotFoundError('Neither SP nor VBB data found on day %s' %
-                                    self.picks['start'])
+            raise FileNotFoundError(
+                "Neither SP nor VBB data found on day {}".format(
+                    self.picks['start']))
 
     def _read_data_from_sc3dir_deglitched(self,
                               inv: obspy.Inventory,
