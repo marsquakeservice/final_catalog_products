@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-'''
-Some python tools for the InSight mars mission.
+"""
+Python tools to create products/plots for the final version of the InSight
+Marsquake service Mars event catalogue
 
 :copyright:
     Simon Stähler (mail@simonstaehler.com), 2018
@@ -11,7 +12,8 @@ Some python tools for the InSight mars mission.
     Fabian Euchner (fabian.euchner@sed.ethz.ch), 2024
 :license:
     GPLv3
-'''
+"""
+
 from setuptools import setup, find_packages
 
 setup(name='final_catalog_products',

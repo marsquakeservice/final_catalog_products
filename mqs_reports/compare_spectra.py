@@ -1,14 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Script to calculate and plot spectra for all MQS events so far
+Python tools to create products/plots for the final version of the InSight
+Marsquake service Mars event catalogue
 
 :copyright:
     Simon Stähler (mail@simonstaehler.com), 2018
-    Martin van Driel (Martin@vanDriel.de)
+    Martin van Driel (Martin@vanDriel.de), 2018
+    Luca Scarabello (luca.scarabello@sed.ethz.ch), 2024
+    Savas Ceylan (savas.ceylan@eaps.ethz.ch), 2024
+    Fabian Euchner (fabian.euchner@sed.ethz.ch), 2024
 :license:
-    None
+    GPLv3
 """
+
 from mqs_reports.utils import __dayplot_set_x_ticks
 
 __author__ = "Simon Stähler"

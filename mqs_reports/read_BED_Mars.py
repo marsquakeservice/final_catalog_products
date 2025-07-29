@@ -1,9 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-'''
-Some scripts to read in the Mars BED extended QuakeML produced by the MQS
-author: Fabian Euchner, Simon Stähler
-'''
+"""
+Python tools to create products/plots for the final version of the InSight
+Marsquake service Mars event catalogue
+
+:copyright:
+    Simon Stähler (mail@simonstaehler.com), 2018
+    Martin van Driel (Martin@vanDriel.de), 2018
+    Luca Scarabello (luca.scarabello@sed.ethz.ch), 2024
+    Savas Ceylan (savas.ceylan@eaps.ethz.ch), 2024
+    Fabian Euchner (fabian.euchner@sed.ethz.ch), 2024
+:license:
+    GPLv3
+"""
+
 import numpy as np
 
 from mqs_reports.event import Event
