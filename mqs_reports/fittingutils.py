@@ -34,9 +34,9 @@ def ratio_HV():
     #     [25.713, 19.907], [26.518, 12.034], [30.000, 8.120]])
     
     this_path = os.path.dirname(os.path.abspath(__file__))
-    raw_spec = np.loadtxt(os.path.join(this_path, "..", "data", 
-                                       'Carrasco_H_over_V_corrected.csv'), 
-                                       delimiter=',')
+    raw_spec = np.loadtxt(
+        os.path.join(this_path, "data", "Carrasco_H_over_V_corrected.csv"), 
+            delimiter=',')
     
     return interp1d(x=raw_spec[:, 0], y=raw_spec[:, 1], kind='cubic', 
                     bounds_error=False, fill_value='extrapolate')
