@@ -5,6 +5,7 @@ Created on Wed May 12 2021
 
 @author: Géraldine Zenhäusern
 """
+
 from os import makedirs
 from os.path import join as pjoin, exists as pexists
 
@@ -299,7 +300,7 @@ def plot_polarization_event_noise(waveforms_VBB,
         ax.set_ylabel('frequency [Hz]', rotation=-90, labelpad=15)
 
     for i, ax in enumerate(axes0[:, 0]):
-        ax.grid(b=True, which='major', axis='x')
+        ax.grid(visible=True, which='major', axis='x')
 
         # Patched marking the hist time windows
         ax.add_patch(rect[i][0])
@@ -454,7 +455,7 @@ def plot_polarization_event_noise(waveforms_VBB,
         ax.scatter(BAZ, ymax, color='darkgrey', marker='v', edgecolors='k', linewidths=0.4, zorder=99)
 
     for ax in axes0[1:, 1:].flatten():
-        ax.grid(b=True, which='both', axis='x', linewidth=0.2, color='grey')
+        ax.grid(visible=True, which='both', axis='x', linewidth=0.2, color='grey')
     # Turn off y-axis ticks for left and middle histograms
     for ax in axes0[:, 1:-1].flatten():
         ax.set_yticklabels('')

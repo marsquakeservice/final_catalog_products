@@ -5,19 +5,23 @@ Some python tools for the InSight mars mission.
 
 :copyright:
     Simon Stähler (mail@simonstaehler.com), 2018
-    Martin van Driel (Martin@vanDriel.de)
+    Martin van Driel (Martin@vanDriel.de), 2018
+    Luca Scarabello (luca.scarabello@sed.ethz.ch), 2024
+    Savas Ceylan (savas.ceylan@eaps.ethz.ch), 2024
+    Fabian Euchner (fabian.euchner@sed.ethz.ch), 2024
 :license:
-    None
+    GPLv3
 '''
 from setuptools import setup, find_packages
 
-setup(name='mqs_reports',
-      version='0.1',
+setup(name='final_catalog_products',
+      version='0.9',
       description='Some python tools to create reports from the MQS database.',
-      url='https://github.com/sstaehler/mqs_reports',
-      author='Simon Stähler, Martin van Driel',
-      author_email='staehler@erdw.ethz.ch',
-      license='None',
+      url='https://github.com/marsquakeservice/final_catalog_products',
+      author='Simon Stähler, Martin van Driel, Luca Scarabello, Savas Ceylan, Fabian Euchner',
+      author_email='fabian.euchner@sed.ethz.ch',
+      license='GPLv3',
       packages=find_packages(),
-      install_requires=['obspy', 'plotly', 'lxml', 'numpy', 'matplotlib==3.6.3',
-                        'tqdm', 'scipy', 'pandas'])
+      install_requires=[
+            'numpy>2', 'obspy>=1.4.2', 'scipy', 'matplotlib', 'pandas', 'lxml',
+            'plotly',   'tqdm', 'seaborn'])

@@ -1694,8 +1694,8 @@ class Event:
                 a.set_xlabel('time after P-wave')
             else:
                 a.set_xlabel('time after start time')
-            a.grid(b=True, which='both', axis='x', lw=0.2, alpha=0.3)
-            a.grid(b=True, which='major', axis='y', lw=0.2, alpha=0.3)
+            a.grid(visible=True, which='both', axis='x', lw=0.2, alpha=0.3)
+            a.grid(visible=True, which='major', axis='y', lw=0.2, alpha=0.3)
             a.axhline(y=np.argmin(abs(freqs - 1.)),
                       ls='dashed', lw=1.0, c='k')
         ax[0].set_xlim(tmin_plot, tmax_plot)
@@ -1877,8 +1877,8 @@ class Event:
             ax_fbs.set_xlabel('time after P-wave')
         else:
             ax_fbs.set_xlabel('time after start time')
-        ax_fbs.grid(b=True, which='both', axis='x', lw=0.2, alpha=0.3)
-        ax_fbs.grid(b=True, which='major', axis='y', lw=0.2, alpha=0.3)
+        ax_fbs.grid(visible=True, which='both', axis='x', lw=0.2, alpha=0.3)
+        ax_fbs.grid(visible=True, which='major', axis='y', lw=0.2, alpha=0.3)
         ax_fbs.axhline(y=np.argmin(abs(freqs - 1.)),
                        ls='dashed', lw=1.0, c='k')
         ax_fbs.set_xlim(tmin_plot, tmax_plot)
