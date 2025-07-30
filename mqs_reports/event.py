@@ -536,7 +536,8 @@ class Event:
             wf_type, dir_cache=event_tmp_dir, station=station, 
             location_code=location_code):
             
-            print("no local copy of waveform found, reading from SDS archive")
+            print("ev {}: no local copy of waveform found, reading from SDS "\
+                "archive".format(self.name))
             
             self.read_data_from_sc3dir(inv, sc3dir, wf_type, kind,
                                        fmin_SP=fmin_SP,
@@ -566,7 +567,7 @@ class Event:
         :return: True if waveform was found in local cache
         """
         
-        event_path = pjoin(dir_cache, self.name)
+        event_path = pjoin(dir_cache, "{}".format(self.name))
         waveform_path = pjoin(event_path, 'waveforms')
         
         # this is a left-over from branch fab
@@ -621,7 +622,7 @@ class Event:
         """
         
         # NOTE(fab): these path definitions are redundant
-        event_path = pjoin(dir_cache, self.name)
+        event_path = pjoin(dir_cache, "{}".format(self.name))
         waveform_path = pjoin(event_path, 'waveforms')
         
         # this is a left-over from branch fab
@@ -675,9 +676,6 @@ class Event:
         :param tpre_SP: prefetch time for SP data (default: 100 sec)
         :param tpre_VBB: prefetch time for VBB data (default: 900 sec)
         """
-
-        
-        self.kind = kind
 
         if len(self.picks['noise_start']) > 0:
             twin_start = min((utct(self.picks['start']),
@@ -758,25 +756,24 @@ class Event:
         #
         success_VBB = False
 
+        # Try for 02.BH? (20sps VBB)
+        filenam_VBB = 'XB.ELYSE.02.BH?.D.%04d.%03d'
+        fnam_VBB = create_fnam_event(
+            filenam_inst=filenam_VBB, station=station,
+            sc3dir=sc3dir, time=self.picks['start'])
+        
+        self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
+                                        kind=kind,
+                                        fmin=fmin_VBB,
+                                        twin=[twin_start - tpre_VBB,
+                                                twin_end + tpre_VBB])
+        
+        if self.waveforms_VBB is not None and \
+                len(self.waveforms_VBB) == 3:
+
+            success_VBB = True
+
         if not success_VBB:
-            # Try for 02.BH? (20sps VBB)
-            filenam_VBB = 'XB.ELYSE.02.BH?.D.%04d.%03d'
-            fnam_VBB = create_fnam_event(
-                filenam_inst=filenam_VBB, station=station,
-                sc3dir=sc3dir, time=self.picks['start'])
-            
-            self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
-                                           kind=kind,
-                                           fmin=fmin_VBB,
-                                           twin=[twin_start - tpre_VBB,
-                                                 twin_end + tpre_VBB])
-            
-            if self.waveforms_VBB is not None and \
-                    len(self.waveforms_VBB) == 3:
-
-                success_VBB = True
-
-        if station == 'ELYSE' and not success_VBB:
             # Try for 03.BH? (10sps VBB)
 
             filenam_VBB = 'XB.ELYSE.03.BH?.D.%04d.%03d'
@@ -836,8 +833,9 @@ class Event:
 
         if self.waveforms_VBB is None and self.waveforms_SP is None:
             raise FileNotFoundError(
-                "Neither SP nor VBB data found on date {}".format(
-                    self.picks['start']))
+                "Neither SP ({}) nor VBB ({}) data found on date {}".format(
+                    fnam_SP, fnam_VBB, self.picks['start']))
+
 
     def _read_data_from_sc3dir_deglitched(self,
                               inv: obspy.Inventory,

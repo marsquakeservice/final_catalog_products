@@ -62,16 +62,9 @@ def create_fnam_event(
 
     hour = utct(time).strftime('%H')
     
-    if station != 'ELYSE':
-        fnam_inst = pjoin(
-            dirnam_inst, 
-            filenam_inst.format(
-                station, location_code, utct(time).year, utct(time).julday))
-    else:
-        fnam_inst = pjoin(
-            dirnam_inst, 
-            filenam_inst.format(utct(time).year, utct(time).julday))
-        
+    fnam_inst = pjoin(
+        dirnam_inst, filenam_inst % (utct(time).year, utct(time).julday))
+            
     if hour in ['00', '22', '23']:
         fnam_inst = fnam_inst[:-1] + '?'
 
@@ -153,6 +146,19 @@ def create_ZNE_HG(st: obspy.Stream,
             azi_w = 255.0
         else:
 
+            chan_u = inv.select(station=st[0].stats.station,
+                                starttime=st[0].stats.starttime,
+                                endtime=st[0].stats.endtime,
+                                channel=chan_name + 'U')[0][0][0]
+            chan_v = inv.select(station=st[0].stats.station,
+                                starttime=st[0].stats.starttime,
+                                endtime=st[0].stats.endtime,
+                                channel=chan_name + 'V')[0][0][0]
+            chan_w = inv.select(station=st[0].stats.station,
+                                starttime=st[0].stats.starttime,
+                                endtime=st[0].stats.endtime,
+                                channel=chan_name + 'W')[0][0][0]
+            
             dip_u = chan_u.dip
             dip_v = chan_v.dip
             dip_w = chan_w.dip
