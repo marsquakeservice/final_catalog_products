@@ -711,14 +711,13 @@ if __name__ == '__main__':
                 print('Plot spectra (smprate=%s, ZRT=%s)'
                           % (smprate, rotate))
                 plot_spectra(
-                        fitter=fitter,
-                        fitting_parameters=fitting_parameters,
-                        fitting_parameters_defaults=fitting_parameters_defaults,
-                        dir_out='spect',
-                        winlen_sec=20.,
-                        wf_type=args.data_type,
-                        rotate=rotate, smprate=smprate
-                )
+                    fitter=fitter,
+                    fitting_parameters=fitting_parameters,
+                    fitting_parameters_defaults=fitting_parameters_defaults,
+                    dir_out='spect',
+                    winlen_sec=20.,
+                    wf_type=args.data_type,
+                    rotate=rotate, smprate=smprate)
 
     if 'all' in args.plot or 'table' in args.plot:
         print('Calc spectra') # to be called only on RAW data

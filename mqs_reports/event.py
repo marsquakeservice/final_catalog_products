@@ -25,6 +25,8 @@ from os.path import split as psplit
 from typing import Union
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+
 import numpy as np
 
 import obspy
@@ -1680,7 +1682,6 @@ class Event:
 
 
     def plot_filterbank(self,
-
                         fmin: float = 1. / 64,
                         fmax: float = 4.,
                         df: float = 2 ** 0.5,
@@ -1697,20 +1698,20 @@ class Event:
                         endtime: obspy.UTCDateTime = None,
                         instrument: str = '',
                         f_VBB_SP_transition = 7.5,
-                        fnam: str = None):
+                        fnam: str = None,
+                        station: str='',
+                        location_code: str=''):
 
         """
         log: plot waveforms in logarithmic scale 
         waveform: plot waveforms in addition to envelopes
         """
         
-        
-
         def mark_glitch(ax: list,
                         x0: float, x1: float,
                         ymin: float = -2.,
                         height: float = 50., **kwargs):
-            from matplotlib.patches import Rectangle
+            
             xy = [x0, ymin]
             width = x1 - x0
             for a in ax:
@@ -1724,20 +1725,24 @@ class Event:
             instrument = self.plot_parameters['filterbanks']['instrument']
         
         # Determine frequencies
-        if fmin is None:
-            fmin = self.plot_parameters['filterbanks']['fmin']
-            
-        if fmax is None:
-            fmax = self.plot_parameters['filterbanks']['fmax']
- 
-        if df is None:
-            df = self.plot_parameters['filterbanks']['df']                
         
+        # leftover from branch fab
+#         if fmin is None:
+#             fmin = self.plot_parameters['filterbanks']['fmin']
+#             
+#         if fmax is None:
+#             fmax = self.plot_parameters['filterbanks']['fmax']
+#  
+#         if df is None:
+#             df = self.plot_parameters['filterbanks']['df']                
+        
+        # Determine frequencies
         nfreqs = int(np.round(np.log(fmax / fmin) / np.log(df), decimals=0) + 1)
         freqs = np.geomspace(fmin, fmax + 0.001, nfreqs)
         
-        f0 = freqs / df
-        f1 = freqs * df
+        # leftover from branch fab
+        # f0 = freqs / df
+        # f1 = freqs * df
         
         # print(self.waveforms_VBB)
         # print(self.waveforms_SP)
@@ -1758,7 +1763,8 @@ class Event:
         else:
             t_ref = self.starttime
             t_ref_type = 'start time'
-
+        
+        # leftover from branch fab
         if self.waveforms_VBB is None:
             print("plot_filterbank: no VBB waveform")
             plt.close()
@@ -1843,22 +1849,22 @@ class Event:
             offset_tr[trid] = None
 
         freqs_data = {}
-        
-        norm_factors = [[], [], []]
-        norm_offsets = [[], [], []]
-        envelopes = [[], [], []]
-        waveform_tr = [[], [], []]
-        
-        xvec_env = []
-        xvec = []
+    
+        # leftover from branch fab
+#         norm_factors = [[], [], []]
+#         norm_offsets = [[], [], []]
+#         envelopes = [[], [], []]
+#         waveform_tr = [[], [], []]
+#         
+#         xvec_env = []
+#         xvec = []
         
         for ifreq, fcenter in enumerate(freqs):
 
             f0 = fcenter / df
             f1 = fcenter * df
 
-
-            skip_freq_bin = False
+            # skip_freq_bin = False
             
             if fcenter < f_VBB_SP_transition:
                 st_filt = st_LF.copy()
@@ -2010,19 +2016,19 @@ class Event:
 
 
                     # plot envelopes
-                    ax[itr].plot(
-                        xvec_env[ifreq],
-                        ifreq + \
-                            (envelopes[itr][ifreq].data - offset) / max_maxfac,
-                        c=color, lw=0.5, zorder=80)
-                    
-                    if waveforms:
-                        # plot waveforms
-                        ax[itr].plot(
-                            xvec[ifreq],
-                            ifreq + waveform_tr[itr][ifreq].data / max_maxfac,
-                            c='C%d' % (ifreq % 10),
-                            lw=0.5, zorder=50 - ifreq)
+#                     ax[itr].plot(
+#                         xvec_env[ifreq],
+#                         ifreq + \
+#                             (envelopes[itr][ifreq].data - offset) / max_maxfac,
+#                         c=color, lw=0.5, zorder=80)
+#                     
+#                     if waveforms:
+#                         # plot waveforms
+#                         ax[itr].plot(
+#                             xvec[ifreq],
+#                             ifreq + waveform_tr[itr][ifreq].data / max_maxfac,
+#                             c='C%d' % (ifreq % 10),
+#                             lw=0.5, zorder=50 - ifreq)
         
         # external time markers
         if timemarkers is not None:
@@ -2103,10 +2109,11 @@ class Event:
         #     self.name, self.quality, self.mars_event_type_short, fmin, fmax, st_LF_desc, st_HF_desc)),
         #     fontsize='x-small')
 
-        
+        # TODO(fab): determine station and location codes from sampling rate 
+        # (currently empty strings)
         fig.suptitle(("Event {} {}/{} ({:5.3f}-{:5.3f} Hz), {} {} {}.{}".format(
             self.name, self.mars_event_type_short, self.quality, fmin, fmax, 
-            fmax, st_LF_desc, st_HF_desc, station_code, location_code)), 
+            fmax, st_LF_desc, st_HF_desc, station, location_code)), 
             fontsize='x-small')
         
 

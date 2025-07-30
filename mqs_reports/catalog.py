@@ -1275,9 +1275,13 @@ class Catalog:
             fnam = plot_filename(event, 'out')
 
             hasdata = False
+            
+            # leftover from branch fab
             nodata = True
             
             if not pexists(fnam):
+                
+                # TODO(fab); index error occurs, should not
                 try:
                     event.plot_filterbank(normwindow='all', annotations=annotations,
                                           starttime=event.starttime - 300.,
@@ -1286,16 +1290,15 @@ class Catalog:
                                           fnam=fnam, fmin=fmin, fmax=fmax, df=df,
                                           normtype=normtype, rotate=rotate)
                 
-                except IndexError as err:
-                    print(f'Problem with filterbank for event {event.name}')
-                    print(err)
-                    
                 except AttributeError as err:
-                    print(f'Problem with filterbank for event {event.name}: {err}')
+                    print( f'AttributeError in filterbank for event "\
+                        "{event.name}: {err}')
+                
                 else:
                     hasdata = True
 
             if event.quality in ['A', 'B', 'C'] and hasdata:
+                
                 fnam = plot_filename(event, 'in')
                 try:
                     if not pexists(fnam):
@@ -1326,8 +1329,8 @@ class Catalog:
                                                   normtype=normtype, rotate=rotate)
                 
                 except IndexError as err:
-                    print(f'Problem with filterbank for event {event.name}')
-                    print(err)
+                    print(f'IndexError in filterbank for event "\
+                        "{event.name}: {err}')
                     
             plt.close()
 
