@@ -248,6 +248,7 @@ class Event:
                  
         return string.format(**dict(inspect.getmembers(self)))
 
+
     def load_distance_manual(self,
                              fnam_csv: str,
                              overwrite=False) -> None:
@@ -289,6 +290,7 @@ class Event:
                  origin time as UTCDateTime object
                  sigma of distance in degree (only based on pick uncertainty)
         """
+        
         if len(self.picks['Sg']) > 0 and len(self.picks['Pg']) > 0:
             deltat = float(utct(self.picks['Sg']) - utct(self.picks['Pg']))
             deltat_sigma = np.sqrt(float(self.picks_sigma['Sg'])**2. +
@@ -353,6 +355,7 @@ class Event:
         else:
             return None, None
 
+
     def calc_distance_sigma_from_pdf(self):
         
         from mqs_reports.utils import uncertainty_from_pdf
@@ -368,11 +371,12 @@ class Event:
             print("cannot get distance sigma from PDF: {}".format(e))
             self.distance_sigma = DISTANCE_SIGMA_DEFAULT
     
+    
     def _set_plot_parameters(self):
         """
         """
         
-        print("setting plot parameters")
+        print("ev {}: setting plot parameters".format(self.name))
         
         # filterbanks setting per event
         self.plot_parameters['filterbanks'] = dict()
