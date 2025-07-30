@@ -565,10 +565,13 @@ class Event:
         :param dir_cache: path to local cache
         :return: True if waveform was found in local cache
         """
-        event_path = pjoin(dir_cache, '%s' % self.name)
         
-        waveform_path = pjoin(
-            event_path, 'waveforms', "{}.{}".format(station, location_code))
+        event_path = pjoin(dir_cache, self.name)
+        waveform_path = pjoin(event_path, 'waveforms')
+        
+        # this is a left-over from branch fab
+        # waveform_path = pjoin(
+        #     event_path, 'waveforms', "{}.{}".format(station, location_code))
         
         origin_path = pjoin(event_path, 'origin_id.txt')
         
@@ -618,9 +621,12 @@ class Event:
         """
         
         # NOTE(fab): these path definitions are redundant
-        event_path = pjoin(dir_cache, '%s' % self.name)
-        waveform_path = pjoin(
-            event_path, 'waveforms', "{}.{}".format(station, location_code))
+        event_path = pjoin(dir_cache, self.name)
+        waveform_path = pjoin(event_path, 'waveforms')
+        
+        # this is a left-over from branch fab
+        # waveform_path = pjoin(
+        #     event_path, 'waveforms', "{}.{}".format(station, location_code))
         
         origin_path = pjoin(event_path, 'origin_id.txt')
         
@@ -830,7 +836,7 @@ class Event:
 
         if self.waveforms_VBB is None and self.waveforms_SP is None:
             raise FileNotFoundError(
-                "Neither SP nor VBB data found on day {}".format(
+                "Neither SP nor VBB data found on date {}".format(
                     self.picks['start']))
 
     def _read_data_from_sc3dir_deglitched(self,
