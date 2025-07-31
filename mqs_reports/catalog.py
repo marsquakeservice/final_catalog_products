@@ -1242,6 +1242,9 @@ class Catalog:
             else:
                 raise ValueError(f'Invalid value for smprate: {smprate}')
 
+            # print("ev {}: plotting filterbanks for smprate {}, instrument "\
+            #     "{}".format(event.name, smprate, instrument))
+            
             if event.mars_event_type_short in ['LF', 'WB', 'BB']:
                 if len(event.picks['S']) * len(event.picks['P']) > 0:
                     t_S = utct(event.picks['S'])
@@ -1276,13 +1279,11 @@ class Catalog:
 
             hasdata = False
             
-            # leftover from branch fab
-            nodata = True
-            
             if not pexists(fnam):
                 
                 # TODO(fab); index error occurs, should not
                 try:
+                    # print("plot for norm 'all'")
                     event.plot_filterbank(normwindow='all', annotations=annotations,
                                           starttime=event.starttime - 300.,
                                           endtime=event.endtime + 300.,
@@ -1290,8 +1291,8 @@ class Catalog:
                                           fnam=fnam, fmin=fmin, fmax=fmax, df=df,
                                           normtype=normtype, rotate=rotate)
                 
-                except AttributeError as err:
-                    print( f'AttributeError in filterbank for event "\
+                except (AttributeError, IndexError) as err:
+                    print( f'Exception in filterbank for event "\
                         "{event.name}: {err}')
                 
                 else:
@@ -1304,6 +1305,7 @@ class Catalog:
                     if not pexists(fnam):
                         
                         # TODO(fab): use event.plot_parameters['filterbanks']['t_P']
+                        # print("plot for norm 'in'")
                         event.plot_filterbank(starttime=t_P - 300.,
                                               endtime=t_P + 1100.,
                                               normwindow='S',
@@ -1317,6 +1319,7 @@ class Catalog:
                     if t_S is not None:
                         fnam = plot_filename(event, 'phases')
                         if not pexists(fnam):
+                            # print("plot for norm 'phases'")
                             event.plot_filterbank(starttime=t_P - 120.,
                                                   endtime=t_S + 240.,
                                                   normwindow='S',
@@ -1328,8 +1331,8 @@ class Catalog:
                                                   fmin=fmin, fmax=fmax, df=df,
                                                   normtype=normtype, rotate=rotate)
                 
-                except IndexError as err:
-                    print(f'IndexError in filterbank for event "\
+                except (IndexError, AttributeError) as err:
+                    print(f'Exception in filterbank for event "\
                         "{event.name}: {err}')
                     
             plt.close()

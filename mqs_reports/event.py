@@ -85,6 +85,8 @@ FILENAME_TEMPLATE_VBB_LG_SM_20SPS = "XB.ELYSE.07.BL?.D.{:04d}.{:03d}"
 
 FILENAME_TEMPLATE_PROCESSED_BH = "XB.{}.{}.BH?.D.{:04d}.{:03d}"
 
+ENVELOPE_CORNERS_COUNT = 8
+
 FILTERBANK_CORNERS_COUNT = 8
 FILTERBANK_PLOT_SCALE_FACTOR = 4
 
@@ -376,7 +378,7 @@ class Event:
         """
         """
         
-        print("ev {}: setting plot parameters".format(self.name))
+        # print("ev {}: setting plot parameters".format(self.name))
         
         # filterbanks setting per event
         self.plot_parameters['filterbanks'] = dict()
@@ -1389,8 +1391,8 @@ class Event:
 
         tr.differentiate()
         tr.differentiate()
-        tr.filter('highpass', freq=fmin, corners=8)
-        tr.filter('lowpass', freq=fmax, corners=8)
+        tr.filter('highpass', freq=fmin, corners=ENVELOPE_CORNERS_COUNT)
+        tr.filter('lowpass', freq=fmax, corners=ENVELOPE_CORNERS_COUNT)
 
         tr_env = envelope_smooth(envelope_window_in_sec=10., tr=tr)
 
@@ -1708,6 +1710,8 @@ class Event:
 
         """
         log: plot waveforms in logarithmic scale 
+        
+        left-ovwer from branch fab (?)
         waveform: plot waveforms in addition to envelopes
         """
         
@@ -1725,12 +1729,13 @@ class Event:
         fig, ax = plt.subplots(nrows=1, ncols=3, sharex='all', sharey='all',
                                figsize=(10, 6))
 
-        if instrument is None:
-            instrument = self.plot_parameters['filterbanks']['instrument']
-        
         # Determine frequencies
         
         # leftover from branch fab
+        
+        # if instrument is None:
+        #     instrument = self.plot_parameters['filterbanks']['instrument']
+        
 #         if fmin is None:
 #             fmin = self.plot_parameters['filterbanks']['fmin']
 #             
@@ -1744,12 +1749,11 @@ class Event:
         nfreqs = int(np.round(np.log(fmax / fmin) / np.log(df), decimals=0) + 1)
         freqs = np.geomspace(fmin, fmax + 0.001, nfreqs)
         
-        # leftover from branch fab
-        # f0 = freqs / df
-        # f1 = freqs * df
+        # print("nfreqs: {}, min freq: {}, max freq: {}".format(
+        #     nfreqs, freqs[0], freqs[-1]))
         
-        # print(self.waveforms_VBB)
-        # print(self.waveforms_SP)
+        # print("waveforms VBB;\n{}".format(self.waveforms_VBB))
+        # print("waveforms SP:\n{}".format(self.waveforms_SP))
         
         # Reference time
         if 'P' in self.picks and len(self.picks['P']) > 0 and \
@@ -1768,9 +1772,8 @@ class Event:
             t_ref = self.starttime
             t_ref_type = 'start time'
         
-        # leftover from branch fab
         if self.waveforms_VBB is None:
-            print("plot_filterbank: no VBB waveform")
+            print("plot_filterbank: no VBB waveform, closing plot")
             plt.close()
             return None
         
@@ -1786,21 +1789,25 @@ class Event:
             st_HF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
             st_LF_desc = ''
             st_HF_desc = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+        
         elif instrument == 'SP':
             st_LF = self.waveforms_SP.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_SP.select(channel='??[ENZ]').copy()
             st_LF_desc = ''
             st_HF_desc = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+        
         elif instrument == 'VBB+VBB100':
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
             st_LF_desc = f'LF={st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
             st_HF_desc = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+        
         elif instrument == 'VBB+SP':
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_SP.select(channel='??[ENZ]').copy()
             st_LF_desc = f'LF={st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
             st_HF_desc = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+        
         else:
             raise ValueError(f'Invalid value for instrument: {instrument}')
 
@@ -1812,6 +1819,7 @@ class Event:
         tstart_norm = dict(P=self.picks['P_spectral_start'],
                            S=self.picks['S_spectral_start'],
                            all=self.starttime)
+        
         tend_norm = dict(P=self.picks['P_spectral_end'],
                          S=self.picks['S_spectral_end'],
                          all=self.endtime)
@@ -1832,10 +1840,9 @@ class Event:
             tmin_plot = starttime - t_ref
         if tmax_plot is None:
             tmax_plot = endtime - t_ref
-
-        # print(t_ref)
-        # print(starttime)
-        # print(endtime)
+        
+        # print("t_ref: {}, starttime: {}, endtime: {}".format(
+        #     t_ref, starttime, endtime))
         
         for st in (st_HF, st_LF):
             st.trim(
@@ -1848,6 +1855,7 @@ class Event:
         maxfac_tr = {}
         offset_tr = {}
         trids = ('Z','2','3')
+        
         for trid in trids:
             maxfac_tr[trid] = None
             offset_tr[trid] = None
@@ -1859,9 +1867,9 @@ class Event:
 #         norm_offsets = [[], [], []]
 #         envelopes = [[], [], []]
 #         waveform_tr = [[], [], []]
-#         
-#         xvec_env = []
-#         xvec = []
+
+        xvec_env = []
+        xvec = []
         
         for ifreq, fcenter in enumerate(freqs):
 
@@ -1879,11 +1887,16 @@ class Event:
                 with warnings.catch_warnings():
                     warnings.simplefilter('ignore')
 
-                    st_filt.filter('bandpass', freqmin=f0, freqmax=f1,
-                                   corners=8)
+                    # print("filtering freq bin {}: center {}, min {}, max "\
+                    #     "{}".format(ifreq, fcenter, f0, f1))
                     
-            except ValueError:  # If f0 is above Nyquist
-                print('No 20sps data available for event %s' % self.name)
+                    st_filt.filter('bandpass', freqmin=f0, freqmax=f1,
+                                   corners=FILTERBANK_CORNERS_COUNT)
+            
+            # f0 is above Nyquist
+            except ValueError:  
+                print("ev {}: Nyquist error: no 20sps data available for "\
+                    "event".formt(self.name))
                 continue
 
             st_filt.trim(starttime=utct(starttime),  endtime=utct(endtime))
@@ -1923,6 +1936,7 @@ class Event:
 
             freqs_data[ifreq]['maxfac'] = {}
             freqs_data[ifreq]['offset'] = {}
+            
             for trid, tr in zip(trids, (tr_Z_env, tr_2_env, tr_3_env) ):
 
                 if log:
@@ -1930,6 +1944,7 @@ class Event:
                                        endtime=tend_norm)
                     maxfac = np.quantile(tr_norm.data, q=0.8)
                     offset = np.quantile(tr_norm.data, q=0.1)
+                
                 else:
                     tr_norm = tr.slice(starttime=tstart_norm,
                                        endtime=tend_norm,
@@ -1954,6 +1969,7 @@ class Event:
                 if offset_tr[trid] is None or offset_tr[trid] > offset:
                     offset_tr[trid] = offset
 
+        # print("2nd freq loop")
         for ifreq, fcenter in enumerate(freqs):
 
             if ifreq not in freqs_data:
@@ -1963,6 +1979,9 @@ class Event:
                raise RuntimeError(
                    'Internal logic error while bulding filterbanks')
 
+            # print("freq bin {}: center {} compute offsets".format(
+            #     ifreq, fcenter))
+            
             tr_Z     = freqs_data[ifreq]['tr']['Z']
             tr_Z_env = freqs_data[ifreq]['tr_env']['Z']
 
@@ -1974,15 +1993,19 @@ class Event:
 
                 maxfac = None
                 offset = None
+                
                 if normtype == 'none':
                     maxfac = freqs_data[ifreq]['maxfac'][trid]
                     offset = freqs_data[ifreq]['offset'][trid]
+                
                 elif normtype == 'single_component':
                     maxfac = maxfac_tr[trid]
                     offset = offset_tr[trid]
+                
                 elif normtype == 'all_components':
                     maxfac = maxfac_all
                     offset = offset_all
+                
                 else:
                     raise ValueError(f'Invalid value for normtype: {normtype}')
 
@@ -2035,6 +2058,7 @@ class Event:
 #                             lw=0.5, zorder=50 - ifreq)
         
         # external time markers
+        # print("plot time markers")
         if timemarkers is not None:
             for phase, time in timemarkers.items():
                 if tmin_plot < time < tmax_plot:
@@ -2043,8 +2067,10 @@ class Event:
                         a.text(x=time, y=nfreqs, s=phase)
 
         # phase markers: phases darkred, start/end darkgreen
+        # print("plot phase markers")
         self.mark_phases(ax, tref=t_ref)
 
+        # print("plot annotations")
         if annotations is not None:
             annotations_event = annotations.select(
                 starttime=utct(self.picks['start']) - 180.,
@@ -2075,6 +2101,7 @@ class Event:
         ax[0].set_yticks(range(0, nfreqs))
         np.set_printoptions(precision=3)
         ticklabels = []
+        
         for freq in freqs:
             if freq > 1:
                 ticklabels.append(f'{freq:.1f}')
