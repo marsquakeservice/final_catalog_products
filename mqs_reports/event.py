@@ -17,11 +17,15 @@ Marsquake service Mars event catalogue
 import inspect
 import warnings
 
+from csv import DictReader
 from glob import glob
+
 from os import makedirs
+
 from os.path import exists as pexists
 from os.path import join as pjoin
 from os.path import split as psplit
+
 from typing import Union
 
 import matplotlib.pyplot as plt
@@ -30,17 +34,23 @@ from matplotlib.patches import Rectangle
 import numpy as np
 
 import obspy
+
 from obspy import UTCDateTime as utct
 from obspy.geodetics.base import kilometers2degrees, gps2dist_azimuth
 from obspy.taup import TauPyModel
+
+import scipy.signal as signal
 
 from mqs_reports.annotations import Annotations
 from mqs_reports.constants import mag_exceptions as mag_exc
 from mqs_reports.constants import magnitude as mag_const
 from mqs_reports.magnitudes import fit_spectra, calc_magnitude
+from mqs_reports.report import make_report
+
 from mqs_reports.utils import create_fnam_event, read_data, calc_PSD, detick, \
     calc_cwf, solify
 from mqs_reports.utils import envelope_smooth
+from mqs_reports.utils import uncertainty_from_pdf
 
 
 RADIUS_MARS = 3389.5
@@ -92,7 +102,7 @@ FILTERBANK_PLOT_SCALE_FACTOR = 4
 
 PICK_METHOD_ALIGNED = 'aligned'
 
-# ELYSE
+# left-over from branch fab, ELYSE
 STATION_USE = 'ELYDL'
 
 
@@ -260,7 +270,7 @@ class Event:
         :param: fnam_csv: path to CSV file with distances
         :param: overwrite: Overwrite existing location from BED?
         """
-        from csv import DictReader
+        
         with open(fnam_csv, 'r') as csv_file:
             csv_reader = DictReader(csv_file)
             for row in csv_reader:
@@ -360,7 +370,7 @@ class Event:
 
     def calc_distance_sigma_from_pdf(self):
         
-        from mqs_reports.utils import uncertainty_from_pdf
+        
 
         try:
             sigma_low, sigma_up = uncertainty_from_pdf(
@@ -1374,8 +1384,7 @@ class Event:
                       fmin=0.05, fmax=10.,
                       ax=None):
 
-        import matplotlib.pyplot as plt
-        from mqs_reports.utils import envelope_smooth
+        
         if ax is None:
             fig, ax = plt.subplots(nrows=1, ncols=1,
                                    figsize=figsize)
@@ -1479,7 +1488,7 @@ class Event:
                       plot_fit=False,
                       flip_axes=False,
                       ax=None):
-        import matplotlib.pyplot as plt
+        
         if ax is None:
             fig, ax = plt.subplots(nrows=1, ncols=1,
                                    figsize=figsize)
@@ -1590,7 +1599,6 @@ class Event:
             plt.show()
 
     def make_report(self, chan, fnam_out, annotations=None):
-        from mqs_reports.report import make_report
         make_report(self, chan=chan, fnam_out=fnam_out, annotations=annotations)
 
     def write_locator_yaml(self, fnam_out, dt=2.):
@@ -1612,8 +1620,7 @@ class Event:
                     f.write('\n')
 
     def rotation_plot(self, angles, fmin, fmax):
-        import matplotlib.pyplot as plt
-        from mqs_reports.utils import envelope_smooth
+        
         fig, ax = plt.subplots(nrows=1, ncols=2, sharex='all', sharey='all',
                                figsize=(10, 6))
 
@@ -2176,9 +2183,7 @@ class Event:
                               df: float = 2 ** 0.5,
                               waveforms: bool = False,
                               fmin=1. / 16., fmax=2.):
-        import warnings
-        from mqs_reports.utils import envelope_smooth
-        import scipy.signal as signal
+        
 
         # Determine frequencies
         nfreqs = int(np.round(np.log(fmax / fmin) /

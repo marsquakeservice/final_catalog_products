@@ -16,8 +16,14 @@ Marsquake service Mars event catalogue
 """
 
 import base64 
+import bz2
+import gzip
+import io 
+import json 
 
 import numpy as np
+
+from lxml import etree
 
 from mqs_reports.event import Event
 from mqs_reports.event import PICK_METHOD_ALIGNED
@@ -407,8 +413,6 @@ def qml_get_sso_info_for_event_element(xml_root, ev):
 def read_QuakeML_BED(
     fnam, event_type, phase_list, quality=ALL_QUALITIES):
     
-    from lxml import etree
-    
     with open(fnam) as fh:
         tree = etree.parse(fh)
         xml_root = tree.getroot()
@@ -419,6 +423,27 @@ def read_QuakeML_BED(
             phase_list=phase_list)
 
     return events
+
+
+def read_JSON_Events(
+    fnam, event_type, phase_list, quality=ALL_QUALITIES):
+    
+    # read location JSON file
+    if fnam.endswith('.gz'):
+        with gzip.open(fnam, 'r') as if_loc:
+            events_dict = json.load(if_loc)
+            
+    elif fnam.endswith('.bz2'):
+        with bz2.open(fnam, 'r') as if_loc:
+            events_dict = json.load(if_loc)
+            
+    else:
+        with io.open(fnam, 'r') as if_loc:
+            events_dict = json.load(if_loc)
+    
+    # TODO(fab): filter events_dict, convert into list of Event() obejcts
+    
+    return events_dict
 
 
 def read_DB_Events(

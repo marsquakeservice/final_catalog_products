@@ -48,6 +48,7 @@ from mqs_reports.snr import calc_stalta
 from mqs_reports.utils import plot_spectrum, envelope_smooth, pred_spec, solify
 
 from mqs_reports.read_BED_Mars import read_DB_Events
+from mqs_reports.read_BED_Mars import read_JSON_Events
 from mqs_reports.read_BED_Mars import read_QuakeML_BED
 
 from marsprocessingtools import utils as marsutils
@@ -71,9 +72,10 @@ LOCATION_QUALITY_SCHEMA = \
 class Catalog:
     def __init__(self,
                  events=None,
-                 fnam_quakeml='catalog.xml',
+                 fnam_event='catalog.json',
                  config_file='',
                  db=False,
+                 json=True,
                  quality=('A', 'B', 'C'),
                  type_select='all',
                  starttime=None,
@@ -84,15 +86,13 @@ class Catalog:
         :param events: dictionary of events. If not set, the events are read
                        from QuakeML file
         :param event_tmp_dir: temporary directory for waveform files
-        :param fnam_quakeml: Path to QuakeML file
+        :param fnam_event: Path to JSON or QuakeML file
         :param quality: Desired event quality
         :param type_select: Desired event types. Either direct type or
                             "all" for BB, HF and LF
                             "higher" for HF and BB
                             "lower" for LF and BB
         """
-        
-        
         
         self.events = []
         
@@ -138,13 +138,23 @@ class Catalog:
             self.types_full = ["{}{}".format(MARS_EVENT_TYPE_SCHEMA, x) for x \
                 in self.types]
             
-            if db is False:
-                events_from_source = read_QuakeML_BED(
-                    fnam=fnam_quakeml, event_type=self.types, quality=quality,
-                    phase_list=PHASE_LIST)
+            if not db:
                 
-                print("read {} events from QuakeML".format(
-                    len(events_from_source)))
+                if json:
+                    events_from_source = read_JSON_Events(
+                        fnam=fnam_event, event_type=self.types, quality=quality,
+                        phase_list=PHASE_LIST)
+                    
+                    print("read {} events from JSON".format(
+                        len(events_from_source)))
+                    
+                else:
+                    events_from_source = read_QuakeML_BED(
+                        fnam=fnam_event, event_type=self.types, quality=quality,
+                        phase_list=PHASE_LIST)
+                    
+                    print("read {} events from QuakeML".format(
+                        len(events_from_source)))
                 
             else:
                 
@@ -164,6 +174,7 @@ class Catalog:
                 
                 print("read {} events from DB".format(len(events_from_source)))
             
+            # TODO(fab): events from JSON is a dict
             self.events.extend(events_from_source)
         
         else:
