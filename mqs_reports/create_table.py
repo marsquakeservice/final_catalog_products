@@ -14,6 +14,12 @@ Marsquake service Mars event catalogue
     GPLv3
 """
 
+import glob
+import json
+import os
+import sys
+import warnings
+
 from argparse import ArgumentParser
 from os.path import exists as pexists, join as pjoin
 from sys import stdout as stdout
@@ -22,13 +28,13 @@ import obspy
 from obspy import UTCDateTime as utct
 from tqdm import tqdm
 
+from fitter import Fitter, plot_spectra
+
+from mqs_reports.annotations import Annotations
+from mqs_reports.catalog import Catalog
 from mqs_reports.snr import calc_SNR, calc_stalta
 from mqs_reports.utils import solify
 
-from fitter import Fitter, plot_spectra
-
-import json
-import glob
 
 def create_row_header(list):
     row = '    <tr>\n'
@@ -665,14 +671,19 @@ def define_arguments():
 
 
 if __name__ == '__main__':
-    from mqs_reports.catalog import Catalog
-    from mqs_reports.annotations import Annotations
-    import warnings
 
     args = define_arguments()
-    catalog = Catalog(fnam_quakeml=args.input_quakeml,
-                      type_select=args.types, quality=args.quality)
+
+    catalog = Catalog(
+        fnam_event=args.input_quakeml, type_select=args.types, 
+        quality=args.quality)
+    
+    if len(catalog) == 0:
+        print("catalog is empty, exiting")
+        sys.exit()
+
     ann = Annotations(fnam_csv=args.input_csv)
+
     # load manual (aligned) distances
     if args.distances == 'all':
         catalog.load_distances(fnam_csv=args.input_dist)

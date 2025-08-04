@@ -30,7 +30,9 @@ from mqs_reports.event import PICK_METHOD_ALIGNED
 
 from marsprocessingtools import constants as cnt
 from marsprocessingtools import dbqueries
-    
+from marsprocessingtools import utils as tools_utils
+
+
 XMLNS_QUAKEML_BED = "http://quakeml.org/xmlns/bed/1.2"
 XMLNS_QUAKEML_BED_MARS = "http://quakeml.org/xmlns/bed/1.2/mars"
 XMLNS_QUAKEML_SST = "http://quakeml.org/xmlns/singlestation/1.0"
@@ -441,9 +443,99 @@ def read_JSON_Events(
         with io.open(fnam, 'r') as if_loc:
             events_dict = json.load(if_loc)
     
-    # TODO(fab): filter events_dict, convert into list of Event() obejcts
+    event_list = []
     
-    return events_dict
+    for ev_name, ev_info in events_dict.items():
+        
+        
+        # missing in JSON:
+        # publicid
+        # latitude
+        # longitude
+        # picks_methodid (empty?)
+        
+        check_event_type = [
+            "".join((cnt.MARS_EVENT_TYPE_SCHEMA, x)) for x in event_type]
+        check_location_quality = [
+            "".join((cnt.LOCATION_QUALITY_SCHEMA, x)) for x in quality]
+        
+        if ev_info['mars_event_type'] not in check_event_type or \
+                ev_info['location_quality'] not in check_location_quality:
+            continue 
+        
+        pref_dist_type = ev_info['preferred_distance_type']
+        
+        if pref_dist_type not in ('GUI', 'DL'):
+            print("ev {}: no valid preferred_distance_type: {}, "\
+                "skipping".format(ev_name, pref_dist_type))
+            
+            continue
+        
+        else:
+            
+            origin_time_iso = "{0}T{1}Z".format(*ev_info['origin_time'].split())
+            
+            sso_distance = \
+                ev_info['location'][pref_dist_type]['distance_sum']
+            
+            sso_distance_pdf = ev_info['location'][pref_dist_type]\
+                ['pdf_dist_sum']['probabilities']
+            
+            distance_pdf_var = []
+            distance_pdf_prob = []
+            
+            for pdf_bin in sso_distance_pdf:
+                distance_pdf_var.append(pdf_bin[0])
+                distance_pdf_prob.append(pdf_bin[1])
+            
+            distance_pdf = np.asarray(
+                (distance_pdf_var, distance_pdf_prob), dtype=float)
+            
+            sso_origin_time = \
+                ev_info['location'][pref_dist_type]['origin_time_sum']
+            
+            picks = dict()
+            picks_sigma = dict()
+            picks_methodid = dict()
+        
+            for phase_code, phase_data in \
+                ev_info['pick_times_all']['meta'].items():
+                
+                if phase_code in phase_list:
+                    picks[phase_code] = phase_data[0]['pick_time']
+                    picks_sigma[phase_code] = phase_data[0]['pick_time_lu']
+                    picks_methodid[phase_code] = ""
+                
+            for phase_code, phase_data in \
+                ev_info['pick_times_all'][pref_dist_type].items():
+                
+                if phase_code in phase_list:
+                    picks[phase_code] = phase_data[0]['pick_time']
+                    
+                    # Note: use only lower uncertainty, ignore upper uncertainty
+                    picks_sigma[phase_code] = phase_data[0]['pick_time_lu']
+                    picks_methodid[phase_code] = ""
+        
+        
+            curr_event = Event(
+                name=ev_name,
+                publicid=ev_info['preferred_origin_id'],
+                origin_publicid=ev_info['preferred_origin_id'],
+                mars_event_type=ev_info['mars_event_type'],
+                quality=ev_info['location_quality'],
+                origin_time=origin_time_iso,
+                latitude=cnt.LANDER_LATITUDE,
+                longitude=cnt.LANDER_LONGITUDE,
+                sso_distance=sso_distance,
+                sso_distance_pdf=distance_pdf,
+                sso_origin_time=sso_origin_time,
+                picks=picks,
+                picks_sigma=picks_sigma,
+                picks_methodid=picks_methodid)
+    
+            event_list.append(curr_event)
+        
+    return event_list
 
 
 def read_DB_Events(
@@ -519,6 +611,7 @@ def read_DB_Events(
                     
                     break
         
+            # Note: use only lower uncertainty, ignore upper uncertainty
             picks[phase] = str(pt)
             picks_sigma[phase] = puc 
             picks_methodid[phase] = pmid

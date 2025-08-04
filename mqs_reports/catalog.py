@@ -141,6 +141,7 @@ class Catalog:
             if not db:
                 
                 if json:
+                    print("reading catalog from JSON")
                     events_from_source = read_JSON_Events(
                         fnam=fnam_event, event_type=self.types, quality=quality,
                         phase_list=PHASE_LIST)
@@ -149,6 +150,7 @@ class Catalog:
                         len(events_from_source)))
                     
                 else:
+                    print("reading catalog from QuakeML")
                     events_from_source = read_QuakeML_BED(
                         fnam=fnam_event, event_type=self.types, quality=quality,
                         phase_list=PHASE_LIST)
@@ -168,13 +170,13 @@ class Catalog:
                     error_str = "cannot connect to SC3 database: {}".format(e)
                     raise RuntimeError(error_str)
                 
+                print("reading catalog from DB")
                 events_from_source = read_DB_Events(
                     self.conn, event_type=self.types_full, quality=quality_full,
                     phase_list=PHASE_LIST, starttime=starttime, endtime=endtime)
                 
                 print("read {} events from DB".format(len(events_from_source)))
             
-            # TODO(fab): events from JSON is a dict
             self.events.extend(events_from_source)
         
         else:
@@ -1257,19 +1259,23 @@ class Catalog:
             #     "{}".format(event.name, smprate, instrument))
             
             if event.mars_event_type_short in ['LF', 'WB', 'BB']:
-                if len(event.picks['S']) * len(event.picks['P']) > 0:
+                if 'S' in event.picks and 'P' in event.picks and \
+                        len(event.picks['S']) * len(event.picks['P']) > 0:
                     t_S = utct(event.picks['S'])
                     t_P = utct(event.picks['P'])
                 else:
                     t_P = utct(event.starttime)
                     t_S = None
+            
             elif event.mars_event_type_short in ['HF', '24', 'VF']:
-                if len(event.picks['Sg']) * len(event.picks['Pg']) > 0:
+                if 'Sg' in event.picks and 'Pg' in event.picks and \
+                        len(event.picks['Sg']) * len(event.picks['Pg']) > 0:
                     t_S = utct(event.picks['Sg'])
                     t_P = utct(event.picks['Pg'])
                 else:
                     t_P = utct(event.starttime)
                     t_S = None
+            
             else: # Super High Frequency
                 t_P = utct(event.starttime)
                 t_S = None

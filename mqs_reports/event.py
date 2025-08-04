@@ -39,7 +39,12 @@ from obspy import UTCDateTime as utct
 from obspy.geodetics.base import kilometers2degrees, gps2dist_azimuth
 from obspy.taup import TauPyModel
 
+from obspy.taup.taup_create import build_taup_model
+#from taup_distance.taup_distance import get_dist, _get_SSmP
+        
 import scipy.signal as signal
+
+import mqs_reports.polarisation_analysis as pa
 
 from mqs_reports.annotations import Annotations
 from mqs_reports.constants import mag_exceptions as mag_exc
@@ -303,7 +308,9 @@ class Event:
                  sigma of distance in degree (only based on pick uncertainty)
         """
         
-        if len(self.picks['Sg']) > 0 and len(self.picks['Pg']) > 0:
+        if 'Sg' in self.picks and 'Pg' in self.picks and \
+                len(self.picks['Sg']) > 0 and len(self.picks['Pg']) > 0:
+            
             deltat = float(utct(self.picks['Sg']) - utct(self.picks['Pg']))
             deltat_sigma = np.sqrt(float(self.picks_sigma['Sg'])**2. +
                                    float(self.picks_sigma['Pg'])**2.)
@@ -315,8 +322,10 @@ class Event:
                                                        radius=RADIUS_MARS)
             origin_time = utct(self.picks['Sg']) - distance_km / vs
             return distance_degree, origin_time, distance_sigma_degree
+        
         else:
             return None, None, None
+
 
     def calc_distance_taup(self,
                            model: Union[TauPyModel, str],
@@ -329,8 +338,7 @@ class Event:
         :param depth_in_km: Fixed depth of event
         :return: distance in degree or None if no picks available
         """
-        from obspy.taup.taup_create import build_taup_model
-        from taup_distance.taup_distance import get_dist, _get_SSmP
+        
 
         if type(model) == str:
             fnam_nd = model
@@ -345,7 +353,9 @@ class Event:
                                  )
             model = TauPyModel(model=fnam_npz)
 
-        if len(self.picks['S']) > 0 and len(self.picks['P']) > 0:
+        if 'S' in self.picks and 'P' in self.picks and \
+            len(self.picks['S']) > 0 and len(self.picks['P']) > 0:
+            
             deltat = float(utct(self.picks['S']) - utct(self.picks['P']))
             distance = get_dist(model, tSmP=deltat, depth=depth_in_km)
 
@@ -364,6 +374,7 @@ class Event:
             # distance_lower = get_dist(model, tSmP=deltat - deltat_sigma, depth=depth_in_km)
             # distance_upper = get_dist(model, tSmP=deltat + deltat_sigma, depth=depth_in_km)
             return distance, distance_sigma
+        
         else:
             return None, None
 
@@ -410,7 +421,8 @@ class Event:
             
             self.plot_parameters['filterbanks']['instrument'] = 'VBB'
                 
-            if len(self.picks['S']) * len(self.picks['P']) > 0:
+            if 'S' in self.picks and 'P' in self.picks and \
+                len(self.picks['S']) * len(self.picks['P']) > 0:
                 
                 self.plot_parameters['filterbanks']['t_S'] = utct(
                     self.picks['S'])
@@ -430,12 +442,22 @@ class Event:
             
             self.plot_parameters['filterbanks']['instrument'] = 'SP'
             
-            if len(self.picks['Sg']) * len(self.picks['Pg']) > 0:
+            if 'Sg' in self.picks and 'Pg' in self.picks and \
+                len(self.picks['Sg']) * len(self.picks['Pg']) > 0:
                 
                 self.plot_parameters['filterbanks']['t_S'] = utct(
                     self.picks['Sg'])
                 self.plot_parameters['filterbanks']['t_P'] = utct(
                     self.picks['Pg'])
+            
+            # fab: prevent lookup of non-existent Pg, Sg
+            elif 'S' in self.picks and 'P' in self.picks and \
+                len(self.picks['S']) * len(self.picks['P']) > 0:
+                
+                self.plot_parameters['filterbanks']['t_S'] = utct(
+                    self.picks['S'])
+                self.plot_parameters['filterbanks']['t_P'] = utct(
+                    self.picks['P'])
                 
             else:
                 self.plot_parameters['filterbanks']['t_S'] = None
@@ -452,12 +474,22 @@ class Event:
                     
                 self.plot_parameters['filterbanks']['instrument'] = 'both'
                 
-                if len(self.picks['Sg']) * len(self.picks['Pg']) > 0:
+                if 'Sg' in self.picks and 'Pg' in self.picks and \
+                    len(self.picks['Sg']) * len(self.picks['Pg']) > 0:
                     
                     self.plot_parameters['filterbanks']['t_S'] = utct(
                         self.picks['Sg'])
                     self.plot_parameters['filterbanks']['t_P'] = utct(
                         self.picks['Pg'])
+                
+                # fab: prevent lookup of non-existent Pg, Sg
+                elif 'S' in self.picks and 'P' in self.picks and \
+                    len(self.picks['S']) * len(self.picks['P']) > 0:
+                    
+                    self.plot_parameters['filterbanks']['t_S'] = utct(
+                        self.picks['S'])
+                    self.plot_parameters['filterbanks']['t_P'] = utct(
+                        self.picks['P'])
                 
                 else:
                     self.plot_parameters['filterbanks']['t_S'] = None
@@ -472,12 +504,22 @@ class Event:
                 
                 self.plot_parameters['filterbanks']['instrument'] = 'SP'
                 
-                if len(self.picks['Sg']) * len(self.picks['Pg']) > 0:
+                if 'Sg' in self.picks and 'Pg' in self.picks and \
+                    len(self.picks['Sg']) * len(self.picks['Pg']) > 0:
                     
                     self.plot_parameters['filterbanks']['t_S'] = utct(
                         self.picks['Sg'])
                     self.plot_parameters['filterbanks']['t_P'] = utct(
                         self.picks['Pg'])
+                
+                # fab: prevent lookup of non-existent Pg, Sg
+                elif 'S' in self.picks and 'P' in self.picks and \
+                    len(self.picks['S']) * len(self.picks['P']) > 0:
+                    
+                    self.plot_parameters['filterbanks']['t_S'] = utct(
+                        self.picks['S'])
+                    self.plot_parameters['filterbanks']['t_P'] = utct(
+                        self.picks['P'])
                 
                 else:
                     self.plot_parameters['filterbanks']['t_S'] = None
@@ -2356,9 +2398,7 @@ class Event:
                           alpha_inc=None, alpha_elli=1.0, alpha_azi=None,  # None when not used
                           show=False,
                           path_out='pol_plots'):
-        import mqs_reports.polarisation_analysis as pa
-
-
+        
         if self.mars_event_type_short in ['HF', 'VF', '24']:
             timing_P = self.picks['Pg']
             timing_S = self.picks['Sg']
