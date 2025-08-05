@@ -1032,28 +1032,34 @@ class Event:
             raise RuntimeError('waveforms not read in Event object\n' +
                                'Call Event.read_waveforms() first.')
 
+        pick_noise_start = self.picks.get('noise_start', None)
+        pick_noise_end = self.picks.get('noise_end', None)
+        
+        pick_p_spectral_start = self.picks.get('P_spectral_start', None)
+        pick_p_spectral_end = self.picks.get('P_spectral_end', None)
+        
+        pick_s_spectral_start = self.picks.get('S_spectral_start', None)
+        pick_s_spectral_end = self.picks.get('S_spectral_end', None)
+        
+        
         if time_windows is not None:
             # Get the time windows from the external source.
             # Start and end are always from the catalog
-            twins = (((self.picks['start']),
-                    (self.picks['end'])),
-                    ((time_windows['noise_start']),
-                    (time_windows['noise_end'])),
-                    ((time_windows['P_spectral_start']),
+            twins = (
+                ((self.picks['start']), (self.picks['end'])),
+                ((time_windows['noise_start']), (time_windows['noise_end'])),
+                ((time_windows['P_spectral_start']), 
                     (time_windows['P_spectral_end'])),
-                    ((time_windows['S_spectral_start']),
+                ((time_windows['S_spectral_start']),
                     (time_windows['S_spectral_end'])))
 
         else:
             # Use what is given in the catalog
-            twins = (((self.picks['start']),
-                    (self.picks['end'])),
-                    ((self.picks['noise_start']),
-                    (self.picks['noise_end'])),
-                    ((self.picks['P_spectral_start']),
-                    (self.picks['P_spectral_end'])),
-                    ((self.picks['S_spectral_start']),
-                    (self.picks['S_spectral_end'])))
+            twins = (
+                ((self.picks['start']), (self.picks['end'])),
+                ((pick_noise_start), (pick_noise_end)),
+                ((pick_p_spectral_start), (pick_p_spectral_end)),
+                ((pick_s_spectral_start), (pick_s_spectral_end)))
 
         if instrument == 'VBB':
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
@@ -1865,13 +1871,13 @@ class Event:
             st_HF.rotate('NE->RT', back_azimuth=self.baz)
             st_LF.rotate('NE->RT', back_azimuth=self.baz)
 
-        tstart_norm = dict(P=self.picks['P_spectral_start'],
-                           S=self.picks['S_spectral_start'],
-                           all=self.starttime)
+        tstart_norm = dict(
+            P=self.picks.get('P_spectral_start', None), 
+            S=self.picks.get('S_spectral_start', None), all=self.starttime)
         
-        tend_norm = dict(P=self.picks['P_spectral_end'],
-                         S=self.picks['S_spectral_end'],
-                         all=self.endtime)
+        tend_norm = dict(
+            P=self.picks.get('P_spectral_end', None),
+            S=self.picks.get('S_spectral_end', None), all=self.endtime)
         
         if normwindow == 'S' and len(tstart_norm[normwindow]) == 0:
             normwindow = 'P'
