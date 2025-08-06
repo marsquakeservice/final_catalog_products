@@ -2195,12 +2195,9 @@ class Event:
         #     self.name, self.quality, self.mars_event_type_short, fmin, fmax, st_LF_desc, st_HF_desc)),
         #     fontsize='x-small')
 
-        # TODO(fab): determine station and location codes from sampling rate 
-        # (currently empty strings)
-        fig.suptitle(("Event {} {}/{} ({:5.3f}-{:5.3f} Hz), {} {} {}.{}".format(
+        fig.suptitle(("Event {} {}/Q{} ({:5.3f}-{:5.3f} Hz), {} {}".format(
             self.name, self.mars_event_type_short, self.quality, fmin, fmax, 
-            fmax, st_LF_desc, st_HF_desc, station, location_code)), 
-            fontsize='x-small')
+            st_LF_desc, st_HF_desc)), fontsize='x-small')
         
 
         plt.subplots_adjust(top=0.911,
