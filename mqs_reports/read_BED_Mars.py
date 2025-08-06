@@ -32,6 +32,8 @@ from marsprocessingtools import constants as cnt
 from marsprocessingtools import dbqueries
 from marsprocessingtools import utils as tools_utils
 
+from singlestationlocator import geodesy
+
 
 XMLNS_QUAKEML_BED = "http://quakeml.org/xmlns/bed/1.2"
 XMLNS_QUAKEML_BED_MARS = "http://quakeml.org/xmlns/bed/1.2/mars"
@@ -428,7 +430,7 @@ def read_QuakeML_BED(
 
 
 def read_JSON_Events(
-    fnam, event_type, phase_list, quality=ALL_QUALITIES):
+    fnam, event_type, phase_list, quality=ALL_QUALITIES, baz={}):
     
     # read location JSON file
     if fnam.endswith('.gz'):
@@ -445,14 +447,9 @@ def read_JSON_Events(
     
     event_list = []
     
+    planet_mars_geo = geodesy.CelestialBody('mars')
+    
     for ev_name, ev_info in events_dict.items():
-        
-        
-        # missing in JSON:
-        # publicid
-        # latitude
-        # longitude
-        # picks_methodid (empty?)
         
         check_event_type = [
             "".join((cnt.MARS_EVENT_TYPE_SCHEMA, x)) for x in event_type]
@@ -465,7 +462,7 @@ def read_JSON_Events(
         
         pref_dist_type = ev_info['preferred_distance_type']
         
-        if pref_dist_type not in ('GUI', 'DL'):
+        if pref_dist_type not in ('GUI', 'DL', 'meta'):
             print("ev {}: no valid preferred_distance_type: {}, "\
                 "skipping".format(ev_name, pref_dist_type))
             
@@ -475,29 +472,18 @@ def read_JSON_Events(
             
             origin_time_iso = "{0}T{1}Z".format(*ev_info['origin_time'].split())
             
-            sso_distance = \
-                ev_info['location'][pref_dist_type]['distance_sum']
-            
-            sso_distance_pdf = ev_info['location'][pref_dist_type]\
-                ['pdf_dist_sum']['probabilities']
-            
-            distance_pdf_var = []
-            distance_pdf_prob = []
-            
-            for pdf_bin in sso_distance_pdf:
-                distance_pdf_var.append(pdf_bin[0])
-                distance_pdf_prob.append(pdf_bin[1])
-            
-            distance_pdf = np.asarray(
-                (distance_pdf_var, distance_pdf_prob), dtype=float)
-            
-            sso_origin_time = \
-                ev_info['location'][pref_dist_type]['origin_time_sum']
-            
+            the_lat = ev_info['latitude']
+            the_lon = ev_info['longitude']
+                
             picks = dict()
             picks_sigma = dict()
             picks_methodid = dict()
-        
+            
+            sso_distance = None
+            distance_pdf = None
+            
+            sso_origin_time = None
+            
             for phase_code, phase_data in \
                 ev_info['pick_times_all']['meta'].items():
                 
@@ -505,27 +491,61 @@ def read_JSON_Events(
                     picks[phase_code] = phase_data[0]['pick_time']
                     picks_sigma[phase_code] = phase_data[0]['pick_time_lu']
                     picks_methodid[phase_code] = ""
+            
+            if pref_dist_type in ('GUI', 'DL'):
+                sso_distance = \
+                    ev_info['location'][pref_dist_type]['distance_sum']
                 
-            for phase_code, phase_data in \
-                ev_info['pick_times_all'][pref_dist_type].items():
+                sso_distance_pdf = ev_info['location'][pref_dist_type]\
+                    ['pdf_dist_sum']['probabilities']
                 
-                if phase_code in phase_list:
-                    picks[phase_code] = phase_data[0]['pick_time']
+                distance_pdf_var = []
+                distance_pdf_prob = []
+                
+                for pdf_bin in sso_distance_pdf:
+                    distance_pdf_var.append(pdf_bin[0])
+                    distance_pdf_prob.append(pdf_bin[1])
+                
+                distance_pdf = np.asarray(
+                    (distance_pdf_var, distance_pdf_prob), dtype=float)
+                
+                sso_origin_time = \
+                    ev_info['location'][pref_dist_type]['origin_time_sum']
+            
+                for phase_code, phase_data in \
+                    ev_info['pick_times_all'][pref_dist_type].items():
                     
-                    # Note: use only lower uncertainty, ignore upper uncertainty
-                    picks_sigma[phase_code] = phase_data[0]['pick_time_lu']
-                    picks_methodid[phase_code] = ""
+                    if phase_code in phase_list:
+                        picks[phase_code] = phase_data[0]['pick_time']
+                        
+                        # Note: use only lower uncertainty, ignore upper uncertainty
+                        picks_sigma[phase_code] = phase_data[0]['pick_time_lu']
+                        picks_methodid[phase_code] = ""
         
-        
+                # if GZ BAZ
+                if 'gz_baz' in ev_info:
+                    gz_baz = ev_info['gz_baz']['bazPolarisation']
+                    
+#                     dist_km = planet_mars_geo.degrees2km(sso_distance)
+#             
+#                     lon_val, lat_val = \
+#                         planet_mars_geo.lon_lat_from_azimuth_distance(
+#                             cnt.LANDER_LONGITUDE, cnt.LANDER_LATITUDE, 
+#                             gz_baz, dist_km)
+                    
+                    print("ev {}: GZ BAZ: {:.1f}, lon: {:.5f}, "\
+                        "lat: {:.5f}".format(ev_name, gz_baz, 
+                        ev_info['longitude'], ev_info['latitude']))
+            
             curr_event = Event(
                 name=ev_name,
-                publicid=ev_info['preferred_origin_id'],
+                publicid=ev_info['bed_event_id'],
                 origin_publicid=ev_info['preferred_origin_id'],
                 mars_event_type=ev_info['mars_event_type'],
                 quality=ev_info['location_quality'],
                 origin_time=origin_time_iso,
-                latitude=cnt.LANDER_LATITUDE,
-                longitude=cnt.LANDER_LONGITUDE,
+                latitude=the_lat,
+                longitude=the_lon,
                 sso_distance=sso_distance,
                 sso_distance_pdf=distance_pdf,
                 sso_origin_time=sso_origin_time,

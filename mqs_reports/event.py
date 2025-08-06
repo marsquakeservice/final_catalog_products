@@ -1951,7 +1951,7 @@ class Event:
             # f0 is above Nyquist
             except ValueError:  
                 print("ev {}: Nyquist error: no 20sps data available for "\
-                    "event".formt(self.name))
+                    "event".format(self.name))
                 continue
 
             st_filt.trim(starttime=utct(starttime),  endtime=utct(endtime))

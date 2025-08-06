@@ -627,8 +627,8 @@ def define_arguments():
     helptext = 'Input annotation file'
     parser.add_argument('input_csv', help=helptext)
 
-    helptext = 'Input manual distance file'
-    parser.add_argument('input_dist', help=helptext)
+    helptext = 'Input BAZ JSON file'
+    parser.add_argument('input_baz', help=helptext)
 
     helptext = 'Input fitting parameter file (marsspectgui)'
     parser.add_argument('input_fitparams', help=helptext)
@@ -674,9 +674,13 @@ if __name__ == '__main__':
 
     args = define_arguments()
 
+    # load GZ BAZ JSON file
+    with open(args.input_baz, 'r') as baz_data:
+        gz_baz_dict = json.load(baz_data)
+        
     catalog = Catalog(
         fnam_event=args.input_quakeml, type_select=args.types, 
-        quality=args.quality)
+        quality=args.quality, baz=gz_baz_dict)
     
     if len(catalog) == 0:
         print("catalog is empty, exiting")
@@ -685,14 +689,16 @@ if __name__ == '__main__':
     ann = Annotations(fnam_csv=args.input_csv)
 
     # load manual (aligned) distances
-    if args.distances == 'all':
-        catalog.load_distances(fnam_csv=args.input_dist)
-        fnam_out='overview.html'
-    elif args.distances == 'GUI':
-        fnam_out='overview_GUI.html'
-    elif args.distances == 'aligned':
-        catalog.load_distances(fnam_csv=args.input_dist, overwrite=True)
-        fnam_out='overview_aligned.html'
+#     if args.distances == 'all':
+#         catalog.load_distances(fnam_csv=args.input_dist)
+#         fnam_out='overview.html'
+#     
+#     elif args.distances == 'GUI':
+#         fnam_out='overview_GUI.html'
+#     
+#     elif args.distances == 'aligned':
+#         catalog.load_distances(fnam_csv=args.input_dist, overwrite=True)
+#         fnam_out='overview_aligned.html'
 
     inv = obspy.read_inventory(args.inventory)
     with warnings.catch_warnings():

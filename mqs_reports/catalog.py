@@ -77,6 +77,7 @@ class Catalog:
                  db=False,
                  json=True,
                  quality=('A', 'B', 'C'),
+                 baz={},
                  type_select='all',
                  starttime=None,
                  endtime=None):
@@ -138,13 +139,15 @@ class Catalog:
             self.types_full = ["{}{}".format(MARS_EVENT_TYPE_SCHEMA, x) for x \
                 in self.types]
             
+            self.baz = baz 
+            
             if not db:
                 
                 if json:
                     print("reading catalog from JSON")
                     events_from_source = read_JSON_Events(
                         fnam=fnam_event, event_type=self.types, quality=quality,
-                        phase_list=PHASE_LIST)
+                        phase_list=PHASE_LIST, baz=self.baz)
                     
                     print("read {} events from JSON".format(
                         len(events_from_source)))
@@ -1298,7 +1301,6 @@ class Catalog:
             
             if not pexists(fnam):
                 
-                # TODO(fab); index error occurs, should not
                 try:
                     # print("plot for norm 'all'")
                     event.plot_filterbank(normwindow='all', annotations=annotations,
