@@ -462,98 +462,89 @@ def read_JSON_Events(
         
         pref_dist_type = ev_info['preferred_distance_type']
         
-        if pref_dist_type not in ('GUI', 'DL', 'meta'):
-            print("ev {}: no valid preferred_distance_type: {}, "\
-                "skipping".format(ev_name, pref_dist_type))
-            
-            continue
+        if pref_dist_type not in ('GUI', 'DL'):
+            print("ev {}: no explicit preferred_distance_type".format(
+                ev_name, pref_dist_type))
         
-        else:
+        origin_time_iso = "{0}T{1}Z".format(*ev_info['origin_time'].split())
+        
+        the_lat = ev_info['latitude']
+        the_lon = ev_info['longitude']
             
-            origin_time_iso = "{0}T{1}Z".format(*ev_info['origin_time'].split())
+        picks = dict()
+        picks_sigma = dict()
+        picks_methodid = dict()
+        
+        sso_distance = None
+        distance_pdf = None
+        
+        sso_origin_time = None
+        
+        # always read 'meta' pick info
+        for phase_code, phase_data in \
+            ev_info['pick_times_all']['meta'].items():
             
-            the_lat = ev_info['latitude']
-            the_lon = ev_info['longitude']
-                
-            picks = dict()
-            picks_sigma = dict()
-            picks_methodid = dict()
+            if phase_code in phase_list:
+                picks[phase_code] = phase_data[0]['pick_time']
+                picks_sigma[phase_code] = phase_data[0]['pick_time_lu']
+                picks_methodid[phase_code] = ""
+        
+        # distance, BAZ, picks only for valid pref_dist_type
+        if pref_dist_type in ('GUI', 'DL'):
+            sso_distance = \
+                ev_info['location'][pref_dist_type]['distance_sum']
             
-            sso_distance = None
-            distance_pdf = None
+            sso_distance_pdf = ev_info['location'][pref_dist_type]\
+                ['pdf_dist_sum']['probabilities']
             
-            sso_origin_time = None
+            distance_pdf_var = []
+            distance_pdf_prob = []
             
+            for pdf_bin in sso_distance_pdf:
+                distance_pdf_var.append(pdf_bin[0])
+                distance_pdf_prob.append(pdf_bin[1])
+            
+            distance_pdf = np.asarray(
+                (distance_pdf_var, distance_pdf_prob), dtype=float)
+            
+            sso_origin_time = \
+                ev_info['location'][pref_dist_type]['origin_time_sum']
+        
             for phase_code, phase_data in \
-                ev_info['pick_times_all']['meta'].items():
+                ev_info['pick_times_all'][pref_dist_type].items():
                 
                 if phase_code in phase_list:
                     picks[phase_code] = phase_data[0]['pick_time']
+                    
+                    # Note: use only lower uncertainty, ignore upper uncertainty
                     picks_sigma[phase_code] = phase_data[0]['pick_time_lu']
                     picks_methodid[phase_code] = ""
-            
-            if pref_dist_type in ('GUI', 'DL'):
-                sso_distance = \
-                    ev_info['location'][pref_dist_type]['distance_sum']
-                
-                sso_distance_pdf = ev_info['location'][pref_dist_type]\
-                    ['pdf_dist_sum']['probabilities']
-                
-                distance_pdf_var = []
-                distance_pdf_prob = []
-                
-                for pdf_bin in sso_distance_pdf:
-                    distance_pdf_var.append(pdf_bin[0])
-                    distance_pdf_prob.append(pdf_bin[1])
-                
-                distance_pdf = np.asarray(
-                    (distance_pdf_var, distance_pdf_prob), dtype=float)
-                
-                sso_origin_time = \
-                    ev_info['location'][pref_dist_type]['origin_time_sum']
-            
-                for phase_code, phase_data in \
-                    ev_info['pick_times_all'][pref_dist_type].items():
-                    
-                    if phase_code in phase_list:
-                        picks[phase_code] = phase_data[0]['pick_time']
-                        
-                        # Note: use only lower uncertainty, ignore upper uncertainty
-                        picks_sigma[phase_code] = phase_data[0]['pick_time_lu']
-                        picks_methodid[phase_code] = ""
-        
-                # if GZ BAZ
-                if 'gz_baz' in ev_info:
-                    gz_baz = ev_info['gz_baz']['bazPolarisation']
-                    
-#                     dist_km = planet_mars_geo.degrees2km(sso_distance)
-#             
-#                     lon_val, lat_val = \
-#                         planet_mars_geo.lon_lat_from_azimuth_distance(
-#                             cnt.LANDER_LONGITUDE, cnt.LANDER_LATITUDE, 
-#                             gz_baz, dist_km)
-                    
-                    print("ev {}: GZ BAZ: {:.1f}, lon: {:.5f}, "\
-                        "lat: {:.5f}".format(ev_name, gz_baz, 
-                        ev_info['longitude'], ev_info['latitude']))
-            
-            curr_event = Event(
-                name=ev_name,
-                publicid=ev_info['bed_event_id'],
-                origin_publicid=ev_info['preferred_origin_id'],
-                mars_event_type=ev_info['mars_event_type'],
-                quality=ev_info['location_quality'],
-                origin_time=origin_time_iso,
-                latitude=the_lat,
-                longitude=the_lon,
-                sso_distance=sso_distance,
-                sso_distance_pdf=distance_pdf,
-                sso_origin_time=sso_origin_time,
-                picks=picks,
-                picks_sigma=picks_sigma,
-                picks_methodid=picks_methodid)
     
-            event_list.append(curr_event)
+            # if GZ BAZ
+            if 'gz_baz' in ev_info:
+                gz_baz = ev_info['gz_baz']['bazPolarisation']
+
+                print("ev {}: GZ BAZ: {:.1f}, lon: {:.5f}, "\
+                    "lat: {:.5f}".format(ev_name, gz_baz, 
+                    ev_info['longitude'], ev_info['latitude']))
+        
+        curr_event = Event(
+            name=ev_name,
+            publicid=ev_info['bed_event_id'],
+            origin_publicid=ev_info['preferred_origin_id'],
+            mars_event_type=ev_info['mars_event_type'],
+            quality=ev_info['location_quality'],
+            origin_time=origin_time_iso,
+            latitude=the_lat,
+            longitude=the_lon,
+            sso_distance=sso_distance,
+            sso_distance_pdf=distance_pdf,
+            sso_origin_time=sso_origin_time,
+            picks=picks,
+            picks_sigma=picks_sigma,
+            picks_methodid=picks_methodid)
+
+        event_list.append(curr_event)
         
     return event_list
 
