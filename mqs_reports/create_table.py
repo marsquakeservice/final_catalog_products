@@ -739,6 +739,7 @@ if __name__ == '__main__':
                 print("Plot spectra for {} waveforms (smprate {}, "\
                     "ZRT {})".format(args.data_type, smprate, rotate))
                 
+                # implicitly calls event.calc_spectra()
                 plot_spectra(
                     fitter=fitter, fitting_parameters=fitting_parameters,
                     fitting_parameters_defaults=fitting_parameters_defaults,
@@ -748,6 +749,7 @@ if __name__ == '__main__':
     if 'all' in args.plot or 'table' in args.plot:
         
         # HTML table creation is OBSOLETE
+        # plot_spectra() calls event.calc_spectra()
         print('Calc spectra') # to be called only on RAW data
         catalog.calc_spectra(winlen_sec=20.0, detick_nfsamp=10)
         

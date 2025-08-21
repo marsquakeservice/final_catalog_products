@@ -1272,10 +1272,18 @@ class Catalog:
                     t_S = None
             
             elif event.mars_event_type_short in ['HF', '24', 'VF']:
+                
+                # TODO(fab): are Pg and Sg still being used? 
                 if 'Sg' in event.picks and 'Pg' in event.picks and \
                         len(event.picks['Sg']) * len(event.picks['Pg']) > 0:
                     t_S = utct(event.picks['Sg'])
                     t_P = utct(event.picks['Pg'])
+                    
+                elif 'S' in event.picks and 'P' in event.picks and \
+                        len(event.picks['S']) * len(event.picks['P']) > 0:
+                    t_S = utct(event.picks['S'])
+                    t_P = utct(event.picks['P'])
+                    
                 else:
                     t_P = utct(event.starttime)
                     t_S = None

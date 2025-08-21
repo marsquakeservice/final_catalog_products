@@ -299,6 +299,8 @@ class Event:
                                                 Union[float, None],
                                                 Union[float, None]):
         """
+        NOTE(fab): this is obsolete. Check for distance from locator.
+        
         Calculate distance of event based on Pg and Sg picks, if available,
         otherwise return None
         :param vp: P-velocity
@@ -381,8 +383,6 @@ class Event:
 
     def calc_distance_sigma_from_pdf(self):
         
-        
-
         try:
             sigma_low, sigma_up = uncertainty_from_pdf(
                 variable=self.distance_pdf[0],
@@ -1026,7 +1026,8 @@ class Event:
         :param padding: Zeropad signal by factor of 2 to smoothen spectra?
         """
 
-        print("calculating spectra")
+        print("calculating spectra for event {}, {}/Q{}".format(
+            self.name, self.mars_event_type_short, self.quality))
         
         if not self._waveforms_read:
             raise RuntimeError('waveforms not read in Event object\n' +
@@ -2242,7 +2243,11 @@ class Event:
                               waveforms: bool = False,
                               fmin=1. / 16., fmax=2.):
         
-
+        """
+        Note(fab); this method seems to be obsolete after Luca's refactoring
+        
+        """
+        
         # Determine frequencies
         nfreqs = int(np.round(np.log(fmax / fmin) /
                               np.log(df),

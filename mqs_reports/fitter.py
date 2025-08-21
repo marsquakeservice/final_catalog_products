@@ -142,18 +142,22 @@ class Fitter:
         self.fmin = dict(BB=0.15, XB=0.15, WB=0.15, LF=0.15, HF=0.9, VF=1.1)
         self.fmax = dict(BB=1.5, XB=6.0, WB=6.0, LF=1.5, HF=4.0, VF=6.0)
     
-    def swap_event(self, event_name, detick_nfsamp, instrument, rotate, time_windows=None):
-        """ Change the current event, read its waveforms and calculate spectra """
+    def swap_event(
+        self, event_name, detick_nfsamp, instrument, rotate, time_windows=None):
+        """ 
+        Change the current event, read its waveforms and calculate spectra 
+        
+        """
+        
         if event_name not in self.get_event_names():
-            raise ValueError("{} is not in the catalog".format(event_name))
+            raise ValueError("event {} is not in the catalog".format(event_name))
         else:
             self.event = self.catalog.select(name=event_name).events[0]
             #self.event.read_waveforms(inv=self.inv, sc3dir=self.path_sc3dir) This would reset event.wf_type to RAW
-            self.event.calc_spectra(winlen_sec=20,
-                                    detick_nfsamp=detick_nfsamp,
-                                    time_windows=time_windows,
-                                    instrument=instrument,
-                                    rotate=rotate)
+            self.event.calc_spectra(
+                winlen_sec=20, detick_nfsamp=detick_nfsamp, 
+                time_windows=time_windows, instrument=instrument, rotate=rotate)
+        
         return self.event
     
     def get_masked_noise(self):
@@ -689,7 +693,7 @@ def plot_spectra(fitter,
                 continue
         else:
             raise ValueError(f'Invalid value for smprate: {smprate}')
-
+        
         if 'noise_start' in event.picks and \
             len(event.picks['noise_start']) > 0:
             noise_start = event.picks['noise_start']
@@ -772,7 +776,7 @@ def plot_spectra(fitter,
             fitting_parameters_pool.set_value(None, 'is_manually_reviewed', False)
 
         #
-        # add missing info  for component R and T
+        # add missing info for component R and T
         #
         fitting_parameters_pool.set_value("R",'fminP',fitting_parameters_pool.get_value("Z", 'fminP'))
         fitting_parameters_pool.set_value("R",'fmaxP',fitting_parameters_pool.get_value("Z", 'fmaxP'))
@@ -819,6 +823,8 @@ def plot_spectra(fitter,
             fitter.event.spectra_SP['stream_info'].startswith("HF"):
             HF_streaminfo = fitter.event.spectra_SP['stream_info']
 
+        print("plotting spectra for event {}".format(event.name))
+        
         for component in (['R','T'] if rotate else ['Z','N','E']):
 
             tr = stream.select(channel='*'+component)[0].copy()
@@ -846,8 +852,17 @@ def plot_spectra(fitter,
             ax2 = fig.add_subplot(gs[1, 0])
             ax3 = fig.add_subplot(gs[1, 1])
 
-            fig.suptitle(f'Event={fitter.event.name} LQ={fitter.event.quality} Type={fitter.event.mars_event_type_short} Component={component} {LF_streaminfo} {HF_streaminfo}')
+            # adjusted plot ttile
+            # fig.suptitle(
+            #     f'Event={fitter.event.name} LQ={fitter.event.quality} "\
+            #     "Type={fitter.event.mars_event_type_short} "\
+            #     "Component={component} {LF_streaminfo} {HF_streaminfo}')
 
+            fig.suptitle("Event {} {}/Q{} {} {} {}".format(
+                    fitter.event.name, fitter.event.mars_event_type_short, 
+                    fitter.event.quality, LF_streaminfo, HF_streaminfo, 
+                    component), fontsize='x-small')
+            
             _plot_spectra_top(
                     fitter, ax1, tr, component, spectral_windows,
                     fitting_parameters_pool
