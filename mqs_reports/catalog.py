@@ -149,8 +149,8 @@ class Catalog:
                         fnam=fnam_event, event_type=self.types, quality=quality,
                         phase_list=PHASE_LIST, baz=self.baz)
                     
-                    print("read {} events from JSON".format(
-                        len(events_from_source)))
+                    print("after filtering: read {} events from catalog "\
+                        "JSON".format(len(events_from_source)))
                     
                 else:
                     print("reading catalog from QuakeML")
@@ -158,7 +158,7 @@ class Catalog:
                         fnam=fnam_event, event_type=self.types, quality=quality,
                         phase_list=PHASE_LIST)
                     
-                    print("read {} events from QuakeML".format(
+                    print("after filtering: read {} events from QuakeML".format(
                         len(events_from_source)))
                 
             else:
@@ -178,7 +178,8 @@ class Catalog:
                     self.conn, event_type=self.types_full, quality=quality_full,
                     phase_list=PHASE_LIST, starttime=starttime, endtime=endtime)
                 
-                print("read {} events from DB".format(len(events_from_source)))
+                print("after filtering: read {} events from DB".format(
+                    len(events_from_source)))
             
             self.events.extend(events_from_source)
         

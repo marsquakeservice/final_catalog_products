@@ -445,7 +445,13 @@ def read_JSON_Events(
         with io.open(fnam, 'r') as if_loc:
             events_dict = json.load(if_loc)
     
+    print("before filtering: read {} events from catalog JSON".format(
+        len(events_dict)))
+    
     event_list = []
+    event_names_no_good_distance_type = []
+    event_names_no_expected_distance_type = []
+    event_names_distance_type_totally_off = []
     
     planet_mars_geo = geodesy.CelestialBody('mars')
     
@@ -463,8 +469,19 @@ def read_JSON_Events(
         pref_dist_type = ev_info['preferred_distance_type']
         
         if pref_dist_type not in ('GUI', 'DL'):
-            print("ev {}: no explicit preferred_distance_type".format(
-                ev_name, pref_dist_type))
+            event_names_no_good_distance_type.append((
+                ev_name, pref_dist_type, 
+                "Q{}".format(ev_info['location_quality'][-1])))
+            
+            if pref_dist_type is None:
+                event_names_no_expected_distance_type.append(
+                    (ev_name, pref_dist_type,
+                     "Q{}".format(ev_info['location_quality'][-1])))
+            
+            else:
+                event_names_distance_type_totally_off.append(
+                    (ev_name, pref_dist_type),
+                    "Q{}".format(ev_info['location_quality'][-1]))
         
         origin_time_iso = "{0}T{1}Z".format(*ev_info['origin_time'].split())
         
@@ -545,7 +562,17 @@ def read_JSON_Events(
             picks_methodid=picks_methodid)
 
         event_list.append(curr_event)
-        
+    
+    print("{} events with totally off preferred distance type: {}".format(
+        len(event_names_distance_type_totally_off),
+        str(event_names_distance_type_totally_off)))
+    print("{} events w/o valid/expected preferred distance type: {}".format(
+        len(event_names_no_expected_distance_type),
+        str(event_names_no_expected_distance_type)))
+    print("{} events w/o GUI/DL preferred distance type: {}".format(
+        len(event_names_no_good_distance_type), 
+        str(event_names_no_good_distance_type)))
+    
     return event_list
 
 

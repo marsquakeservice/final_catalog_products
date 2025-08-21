@@ -1766,7 +1766,7 @@ class Event:
         """
         log: plot waveforms in logarithmic scale 
         
-        left-ovwer from branch fab (?)
+        left-over from branch fab (?)
         waveform: plot waveforms in addition to envelopes
         """
         
@@ -1879,13 +1879,27 @@ class Event:
             P=self.picks.get('P_spectral_end', None),
             S=self.picks.get('S_spectral_end', None), all=self.endtime)
         
-        if normwindow == 'S' and len(tstart_norm[normwindow]) == 0:
-            normwindow = 'P'
-            if len(tstart_norm[normwindow]) == 0:
+        # check tstart norm_for existence of requested phase
+        # (same existence for tend_norm)
+        # set normwindow in order 'S', 'P', 'all'
+        if normwindow == 'S':
+            try:
+                tstart_norm = utct(tstart_norm[normwindow])
+                tend_norm = utct(tend_norm[normwindow])
+            except Exception:
+                normwindow = 'P'
+                
+        if normwindow == 'P':
+            try:
+                tstart_norm = utct(tstart_norm[normwindow])
+                tend_norm = utct(tend_norm[normwindow])
+            except Exception:
                 normwindow = 'all'
         
-        tstart_norm = utct(tstart_norm[normwindow])
-        tend_norm = utct(tend_norm[normwindow])
+        # fallback 'all' is always there
+        if normwindow == 'all':
+            tstart_norm = utct(tstart_norm[normwindow])
+            tend_norm = utct(tend_norm[normwindow])
 
         if starttime is None:
             starttime = self.starttime - 100.
@@ -1903,7 +1917,6 @@ class Event:
             st.trim(
                 starttime=utct(starttime) - 1.0/fmin,
                 endtime=utct(endtime) + 1.0/fmin)
-
 
         maxfac_all = None
         offset_all = None

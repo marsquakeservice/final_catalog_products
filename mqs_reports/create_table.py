@@ -689,6 +689,7 @@ if __name__ == '__main__':
     ann = Annotations(fnam_csv=args.input_csv)
 
     # load manual (aligned) distances
+    # OBSOLETE
 #     if args.distances == 'all':
 #         catalog.load_distances(fnam_csv=args.input_dist)
 #         fnam_out='overview.html'
@@ -701,43 +702,56 @@ if __name__ == '__main__':
 #         fnam_out='overview_aligned.html'
 
     inv = obspy.read_inventory(args.inventory)
+    
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        print('Read %s waveforms' % args.data_type)
-        catalog.read_waveforms(inv=inv, wf_type=args.data_type,
-                               kind='DISP', sc3dir=args.sc3_dir)
+        
+        print("Read {} waveforms".format(args.data_type))
+        
+        catalog.read_waveforms(
+            inv=inv, wf_type=args.data_type, kind='DISP', sc3dir=args.sc3_dir)
 
     if 'all' in args.plot or 'filterbanks' in args.plot:
         for smprate in ('VBB_LF', 'SP_HF', 'LF+HF'):
             for rotate in (False, True):
                 for normtype in ('none', 'single_component', 'all_components'):
-                    print('Plot filter banks (smprate=%s, norm=%s, ZRT=%s)'
-                          % (smprate, normtype, rotate))
-                    catalog.plot_filterbanks(dir_out='filterbanks', annotations=ann,
-                                             normtype=normtype, rotate=rotate,
-                                             smprate=smprate)
+                    
+                    print("Plot filter banks for {} waveforms (smprate {}, "\
+                        "norm {}, ZRT {})".format(
+                            args.data_type, smprate, normtype, rotate))
+                    
+                    catalog.plot_filterbanks(
+                        dir_out='filterbanks', annotations=ann, 
+                        normtype=normtype, rotate=rotate, smprate=smprate)
 
     if 'all' in args.plot or 'spectral-fit' in args.plot:
         with open(args.input_fitparams) as json_data:
             fitting_parameters = json.load(json_data)
+            
         with open(args.input_fitparams_default) as json_data:
             fitting_parameters_defaults = json.load(json_data)
+        
         fitter = Fitter(catalog=catalog, inventory=inv, path_sc3dir=args.sc3_dir)
+        
         for smprate in ('VBB_LF', 'SP_HF', 'LF+HF'):
             for rotate in (False, True):
-                print('Plot spectra (smprate=%s, ZRT=%s)'
-                          % (smprate, rotate))
+                
+                print("Plot spectra for {} waveforms (smprate {}, "\
+                    "ZRT {})".format(args.data_type, smprate, rotate))
+                
                 plot_spectra(
-                    fitter=fitter,
-                    fitting_parameters=fitting_parameters,
+                    fitter=fitter, fitting_parameters=fitting_parameters,
                     fitting_parameters_defaults=fitting_parameters_defaults,
-                    dir_out='spect',
-                    winlen_sec=20.,
-                    wf_type=args.data_type,
+                    dir_out='spect', winlen_sec=20.0, wf_type=args.data_type,
                     rotate=rotate, smprate=smprate)
 
     if 'all' in args.plot or 'table' in args.plot:
+        
+        # HTML table creation is OBSOLETE
         print('Calc spectra') # to be called only on RAW data
-        catalog.calc_spectra(winlen_sec=20., detick_nfsamp=10)
+        catalog.calc_spectra(winlen_sec=20.0, detick_nfsamp=10)
+        
+        fnam_out = 'overview_GUI.html'
+        
         print('Create table')
         write_html(catalog, fnam_out=fnam_out, magnitude_version=args.mag_version)
