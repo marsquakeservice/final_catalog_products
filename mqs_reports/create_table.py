@@ -642,7 +642,6 @@ def define_arguments():
     helptext = 'Path to SC3DIR'
     parser.add_argument('sc3_dir', help=helptext)
 
-
     helptext = 'Location qualities (one or more)'
     parser.add_argument('-q', '--quality', help=helptext,
                         nargs='+', default=('A', 'B', 'C', 'D'))
@@ -664,9 +663,15 @@ def define_arguments():
                         default='all')
 
     helptext = 'Data type: RAW, DEGLITCHED, DENOISED'
-    parser.add_argument('--data-type', help=helptext,
-                        default='RAW')
-
+    parser.add_argument('--data-type', help=helptext, default='RAW')
+    
+    helptext = 'force product re-creation'
+    # parser.add_argument('--force-products', help=helptext, default=False)
+    
+    parser.add_argument('--force-products', action='store_true')
+    parser.add_argument(
+        '--no-force-products', dest='force-products', action='store_false')
+    
     return parser.parse_args()
 
 
@@ -731,7 +736,8 @@ if __name__ == '__main__':
         with open(args.input_fitparams_default) as json_data:
             fitting_parameters_defaults = json.load(json_data)
         
-        fitter = Fitter(catalog=catalog, inventory=inv, path_sc3dir=args.sc3_dir)
+        fitter = Fitter(
+            catalog=catalog, inventory=inv, path_sc3dir=args.sc3_dir)
         
         for smprate in ('VBB_LF', 'SP_HF', 'LF+HF'):
             for rotate in (False, True):
@@ -744,7 +750,8 @@ if __name__ == '__main__':
                     fitter=fitter, fitting_parameters=fitting_parameters,
                     fitting_parameters_defaults=fitting_parameters_defaults,
                     dir_out='spect', winlen_sec=20.0, wf_type=args.data_type,
-                    rotate=rotate, smprate=smprate)
+                    rotate=rotate, smprate=smprate, 
+                    force_products=args.force_products)
 
     if 'all' in args.plot or 'table' in args.plot:
         

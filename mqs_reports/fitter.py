@@ -157,7 +157,9 @@ class Fitter:
             raise ValueError("event {} is not in the catalog".format(event_name))
         else:
             self.event = self.catalog.select(name=event_name).events[0]
-            #self.event.read_waveforms(inv=self.inv, sc3dir=self.path_sc3dir) This would reset event.wf_type to RAW
+            
+            # This would reset event.wf_type to RAW
+            #self.event.read_waveforms(inv=self.inv, sc3dir=self.path_sc3dir) 
             self.event.calc_spectra(
                 winlen_sec=20, detick_nfsamp=detick_nfsamp, 
                 time_windows=time_windows, instrument=instrument, rotate=rotate)
@@ -658,10 +660,10 @@ def plot_spectra(fitter,
                  dir_out: str,
                  winlen_sec: float,
                  wf_type : str,
-                 padding: bool = False,
-                 rotate: bool = False,
-                 smprate: str = '', # VBB_LF, SP_HF, LF+HF
-                 ) -> None:
+                 padding: bool=False,
+                 rotate: bool=False,
+                 smprate: str='', # VBB_LF, SP_HF, LF+HF
+                 force_products: bool=False) -> None:
 
     for event in tqdm(fitter.catalog, file=sys.stdout):
 
@@ -740,12 +742,12 @@ def plot_spectra(fitter,
                 'S_spectral_start': s_start, 'S_spectral_end': s_end}
 
         try:
-            fitter.swap_event(event_name=event.name,
-                              detick_nfsamp=(10 if wf_type != "DEGLITCHED" else 0),
-                              instrument=instrument,
-                              rotate=rotate,
-                              time_windows=spectral_windows
-                              )
+            fitter.swap_event(
+                event_name=event.name,
+                detick_nfsamp=(10 if wf_type != "DEGLITCHED" else 0),
+                instrument=instrument, rotate=rotate,
+                time_windows=spectral_windows)
+            
         except Exception as e:
             print(f'Error fitter.swap_event with event {event.name}: {e}')
             continue
@@ -760,24 +762,32 @@ def plot_spectra(fitter,
                      'spectra_%s_SampRate_%s_Component_%s_Data_%s.png' %
                      (ev.name, smprate, component, ev.wf_type) )
 
-        fitting_parameters_pool = FittingParameterPool(event_name=fitter.event.name)
+        fitting_parameters_pool = FittingParameterPool(
+            event_name=fitter.event.name)
+        
         if fitter.event.name in fitting_parameters:
-            fitting_parameters_pool.set_parameters(fitting_parameters[fitter.event.name])
-            fitting_parameters_pool.set_value(None, 'is_manually_reviewed', True)
+            fitting_parameters_pool.set_parameters(
+                fitting_parameters[fitter.event.name])
+            fitting_parameters_pool.set_value(
+                None, 'is_manually_reviewed', True)
         else: 
             # Get the default values
-            profiles = fitting_parameters_defaults['fitting-defaults']['event-settings'].split(',')
+            profiles = fitting_parameters_defaults['fitting-defaults']\
+                ['event-settings'].split(',')
             defaults = None
             for profile in profiles:
                 preset = profile.split(':')
                 if fitter.get_event_type() == preset[0].strip():
-                    defaults = copy.deepcopy(fitting_parameters_defaults['fitting-defaults'][preset[1].strip()])
+                    defaults = copy.deepcopy(
+                        fitting_parameters_defaults['fitting-defaults']\
+                            [preset[1].strip()])
                     break
             if defaults is None:
                 print('Error: no default fitting parameters found for event' + fitter.event.name)
                 continue
             fitting_parameters_pool.set_parameters(defaults)
-            fitting_parameters_pool.set_value(None, 'is_manually_reviewed', False)
+            fitting_parameters_pool.set_value(
+                None, 'is_manually_reviewed', False)
 
         #
         # add missing info for component R and T
@@ -820,14 +830,12 @@ def plot_spectra(fitter,
 
         LF_streaminfo = ""
         LF_streaminfo_with_orientation = ""
-        
         HF_streaminfo = ""
         HF_streaminfo_with_orientation = ""
         
         if 'stream_info' in fitter.event.spectra and \
                 fitter.event.spectra['stream_info'].startswith("LF"):
             LF_streaminfo = fitter.event.spectra['stream_info']
-            LF_streaminfo_with_orientation = "{}{}@{}".format()
             
         if 'stream_info' in fitter.event.spectra_SP and \
                 fitter.event.spectra_SP['stream_info'].startswith("HF"):
@@ -841,7 +849,7 @@ def plot_spectra(fitter,
 
             fnam = plot_filename(fitter.event, component)
 
-            if pexists(fnam):
+            if pexists(fnam) and not(force_products):
                 continue
 
             try:
@@ -869,11 +877,13 @@ def plot_spectra(fitter,
             #     "Type={fitter.event.mars_event_type_short} "\
             #     "Component={component} {LF_streaminfo} {HF_streaminfo}')
             
-            LF_streaminfo_with_orientation = add_orientation_to_stream_info(
-                LF_streaminfo, component)
+            if len(LF_streaminfo) > 0:
+                LF_streaminfo_with_orientation = add_orientation_to_stream_info(
+                    LF_streaminfo, component)
             
-            HF_streaminfo_with_orientation = add_orientation_to_stream_info(
-                HF_streaminfo, component)
+            if len(HF_streaminfo) > 0:
+                HF_streaminfo_with_orientation = add_orientation_to_stream_info(
+                    HF_streaminfo, component)
             
             fig.suptitle("Event {} {}/Q{} {} {}".format(
                     fitter.event.name, fitter.event.mars_event_type_short, 
