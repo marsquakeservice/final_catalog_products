@@ -22,6 +22,10 @@ import datetime as dt
 import logging
 import copy
 from itertools import product
+
+
+from mqs_reports.utils import add_orientation_to_stream_info
+
 from fittingutils import real2dB, dB2real, lorentz_att, \
                           vectorized_misfit_lorentz, ratio_HV, \
                           calc_cov_lorentz
@@ -815,12 +819,18 @@ def plot_spectra(fitter,
                 stream.rotate('NE->RT', back_azimuth=fitter.event.baz)
 
         LF_streaminfo = ""
+        LF_streaminfo_with_orientation = ""
+        
         HF_streaminfo = ""
+        HF_streaminfo_with_orientation = ""
+        
         if 'stream_info' in fitter.event.spectra and \
-            fitter.event.spectra['stream_info'].startswith("LF"):
+                fitter.event.spectra['stream_info'].startswith("LF"):
             LF_streaminfo = fitter.event.spectra['stream_info']
+            LF_streaminfo_with_orientation = "{}{}@{}".format()
+            
         if 'stream_info' in fitter.event.spectra_SP and \
-            fitter.event.spectra_SP['stream_info'].startswith("HF"):
+                fitter.event.spectra_SP['stream_info'].startswith("HF"):
             HF_streaminfo = fitter.event.spectra_SP['stream_info']
 
         print("plotting spectra for event {}".format(event.name))
@@ -858,11 +868,17 @@ def plot_spectra(fitter,
             #     f'Event={fitter.event.name} LQ={fitter.event.quality} "\
             #     "Type={fitter.event.mars_event_type_short} "\
             #     "Component={component} {LF_streaminfo} {HF_streaminfo}')
-
-            fig.suptitle("Event {} {}/Q{} {} {} {}".format(
+            
+            LF_streaminfo_with_orientation = add_orientation_to_stream_info(
+                LF_streaminfo, component)
+            
+            HF_streaminfo_with_orientation = add_orientation_to_stream_info(
+                HF_streaminfo, component)
+            
+            fig.suptitle("Event {} {}/Q{} {} {}".format(
                     fitter.event.name, fitter.event.mars_event_type_short, 
-                    fitter.event.quality, LF_streaminfo, HF_streaminfo, 
-                    component), fontsize='large')
+                    fitter.event.quality, LF_streaminfo_with_orientation, 
+                    HF_streaminfo_with_orientation), fontsize='x-large')
             
             _plot_spectra_top(
                     fitter, ax1, tr, component, spectral_windows,
@@ -887,6 +903,7 @@ def _plot_spectra_top(fitter, ax, tr, component, windows, fitting_parameters):
 
     sns.lineplot(ax=ax, x=tr.times(), y=tr.data, color='steelblue')
 
+    # this is stream_info with orientation
     ax.set(xlabel=f'{tr.id}@{tr.stats.sampling_rate}')
 
     to_tr_time = lambda time_str: UTCDateTime(time_str) - tr.stats.starttime

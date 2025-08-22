@@ -822,3 +822,12 @@ def uncertainty_from_pdf(variable: np.array, p: np.array):
         r2 = 30
 
     return r1, r2
+
+
+def add_orientation_to_stream_info(stream_info, orientation):
+    
+    stream_info_with_orientation = "{}{}@{}".format(
+        stream_info.split('@')[0], orientation, stream_info.split('@')[1])
+    
+    return stream_info_with_orientation
+    

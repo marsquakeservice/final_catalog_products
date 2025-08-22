@@ -54,6 +54,7 @@ from mqs_reports.report import make_report
 
 from mqs_reports.utils import create_fnam_event, read_data, calc_PSD, detick, \
     calc_cwf, solify
+
 from mqs_reports.utils import envelope_smooth
 from mqs_reports.utils import uncertainty_from_pdf
 
@@ -1089,6 +1090,7 @@ class Event:
 
         self.spectra = dict()
         self.spectra_SP = dict()
+        
         variables = ('all', 'noise', 'P', 'S')
         
         for twin, variable in zip(twins, variables):
@@ -1164,6 +1166,7 @@ class Event:
         for signal in self.spectra_SP.keys():
             if signal == 'stream_info':
                 continue
+            
             if not rotate:
                 self.spectra_SP[signal]['p_H'] = \
                     self.spectra_SP[signal]['p_N'] + self.spectra_SP[signal]['p_E']
@@ -1213,6 +1216,7 @@ class Event:
                                              event_type=self.mars_event_type_short)
                 if amplitudes is not None:
                     break
+            
             if amplitudes is not None:
                 self.amplitudes = amplitudes
 
@@ -1535,6 +1539,7 @@ class Event:
         if new_ax:
             plt.show()
 
+
     def plot_spectrum(self, comp='Z',
                       window: str = 'S',
                       figsize=(4, 3),
@@ -1567,14 +1572,15 @@ class Event:
         if flip_axes:
             ax.set_ylim(0., 2.)
             ax.set_xlim(-230., -160.)
-            ax.set_ylabel('frequency / Hz')
-            ax.set_xlabel('power spectral density / m$^2$/Hz')
+            ax.set_ylabel('frequency / Hz', fontsize='medium')
+            ax.set_xlabel('power spectral density / m$^2$/Hz', fontsize='medium')
         else:
             ax.set_xlim(0., 2.)
             ax.set_ylim(-230., -160.)
-            ax.set_xlabel('frequency / Hz')
-            ax.set_ylabel('power spectral density / m$^2$/Hz')
-        ax.set_title('Spectrum %s' % self.name)
+            ax.set_xlabel('frequency / Hz', fontsize='medium')
+            ax.set_ylabel('power spectral density / m$^2$/Hz', fontsize='medium')
+        
+        ax.set_title('Spectrum %s' % self.name, fontsize='x-large')
 
         if plot_fit:
             f = np.geomspace(0.01, 10., 100)
@@ -1718,13 +1724,14 @@ class Event:
         ax[0].set_yticklabels(angles)
         ax[0].set_xlim(-50, 550)
         ax[0].set_ylim(-1, nangles * 1.15)
-        ax[0].set_xlabel('time after P-wave')
-        ax[0].set_ylabel('Rotation angle')
-        ax[0].set_title('Radial component')
-        ax[1].set_title('Transversal component')
+        ax[0].set_xlabel('time after P-wave', fontsize='medium')
+        ax[0].set_ylabel('Rotation angle', fontsize='medium')
+        ax[0].set_title('Radial component', fontsize='medium')
+        ax[1].set_title('Transversal component', fontsize='medium')
         
         fig.suptitle('Event %s (%5.3f-%5.3f Hz)' %
-                     (self.name, fmin, fmax))
+                     (self.name, fmin, fmax), fontsize='x-large')
+        
         fig.savefig('rotations_%s_%3.1f_%3.1f_sec.png' %
                     (self.name, 1. / fmax, 1. / fmin),
                     dpi=200)
@@ -1788,8 +1795,8 @@ class Event:
                 rect = Rectangle(xy=xy, width=width, height=height, **kwargs)
                 a.add_patch(rect)
 
-        fig, ax = plt.subplots(nrows=1, ncols=3, sharex='all', sharey='all',
-                               figsize=(10, 6))
+        fig, ax = plt.subplots(
+            nrows=1, ncols=3, sharex='all', sharey='all', figsize=(10, 6))
 
         # Determine frequencies
         
@@ -1849,6 +1856,7 @@ class Event:
         elif instrument == 'VBB100':
             st_LF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
+            
             st_LF_desc = ''
             st_HF_desc = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
         
@@ -1861,12 +1869,14 @@ class Event:
         elif instrument == 'VBB+VBB100':
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
+            
             st_LF_desc = f'LF={st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
             st_HF_desc = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
         
         elif instrument == 'VBB+SP':
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_SP.select(channel='??[ENZ]').copy()
+            
             st_LF_desc = f'LF={st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
             st_HF_desc = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
         
@@ -2188,9 +2198,9 @@ class Event:
             # a.set_xticks(np.arange(-300, 1000, 100), minor=False)
             a.set_xticks(np.arange(-300, 3000, 25), minor=True)
             if t_ref_type == 'P':
-                a.set_xlabel('time after P-wave')
+                a.set_xlabel('time after P-wave', fontsize='medium')
             else:
-                a.set_xlabel('time after start time')
+                a.set_xlabel('time after start time', fontsize='medium')
 
             a.grid(visible=True, which='both', axis='x', lw=0.2, alpha=0.3)
             a.grid(visible=True, which='major', axis='y', lw=0.2, alpha=0.3)
@@ -2200,16 +2210,17 @@ class Event:
         
         ax[0].set_xlim(tmin_plot, tmax_plot)
         ax[0].set_ylim(-1.5, nfreqs + 1.5)
-        ax[0].set_ylabel('frequency / Hz')
-        ax[0].set_title('Vertical')
+        
+        ax[0].set_ylabel('frequency / Hz', fontsize='medium')
+        ax[0].set_title('Vertical', fontsize='medium')
 
         if rotate:
 
-            ax[1].set_title('Radial')
-            ax[2].set_title('Transverse')
+            ax[1].set_title('Radial', fontsize='medium')
+            ax[2].set_title('Transverse', fontsize='medium')
         else:
-            ax[1].set_title('North/South')
-            ax[2].set_title('East/West')
+            ax[1].set_title('North/South', fontsize='medium')
+            ax[2].set_title('East/West', fontsize='medium')
 
         # fig.suptitle( ('Event=%s LQ=%s Type=%s (%5.3f-%5.3f Hz) %s %s' %  (
         #     self.name, self.quality, self.mars_event_type_short, fmin, fmax, st_LF_desc, st_HF_desc)),
@@ -2217,7 +2228,7 @@ class Event:
 
         fig.suptitle(("Event {} {}/Q{} ({:5.3f}-{:5.3f} Hz), {} {}".format(
             self.name, self.mars_event_type_short, self.quality, fmin, fmax, 
-            st_LF_desc, st_HF_desc)), fontsize='x-small')
+            st_LF_desc, st_HF_desc)), fontsize='x-large')
         
 
         plt.subplots_adjust(top=0.911,
@@ -2395,17 +2406,19 @@ class Event:
                 ticklabels.append(f'1/{1. / freq:.1f}Hz')
         ax_fbs.set_yticklabels(ticklabels)
         ax_fbs.set_xticks(np.arange(-300, 3000, 25), minor=True)
+        
         if t_ref_type == 'P':
-            ax_fbs.set_xlabel('time after P-wave')
+            ax_fbs.set_xlabel('time after P-wave', fontsize='medium')
         else:
-            ax_fbs.set_xlabel('time after start time')
+            ax_fbs.set_xlabel('time after start time', fontsize='medium')
+            
         ax_fbs.grid(visible=True, which='both', axis='x', lw=0.2, alpha=0.3)
         ax_fbs.grid(visible=True, which='major', axis='y', lw=0.2, alpha=0.3)
         ax_fbs.axhline(y=np.argmin(abs(freqs - 1.)),
                        ls='dashed', lw=1.0, c='k')
         ax_fbs.set_xlim(tmin_plot, tmax_plot)
         ax_fbs.set_ylim(-1.5, nfreqs + 1.5)
-        ax_fbs.set_ylabel('frequency')
+        ax_fbs.set_ylabel('frequency', fontsize='medium')
 
         return freqs, envs_out
 
