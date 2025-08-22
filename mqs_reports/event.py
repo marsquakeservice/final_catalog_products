@@ -1112,7 +1112,10 @@ class Event:
 
                 if spectrum_variable:
                     self.spectra[variable] = spectrum_variable
-                    self.spectra['stream_info'] = f'LF={st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
+                    self.spectra['stream_info'] = \
+                        f'LF={st_LF[0].stats.station}.{st_LF[0].stats.location}'\
+                            '.{st_LF[0].stats.channel[0:2]}@'\
+                                '{st_LF[0].stats.sampling_rate}'
 
             if st_HF is not None:
                 spectrum_variable = dict()
@@ -1136,7 +1139,10 @@ class Event:
 
                 if spectrum_variable:
                     self.spectra_SP[variable] = spectrum_variable
-                    self.spectra_SP['stream_info'] = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+                    self.spectra_SP['stream_info'] = \
+                        f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}'\
+                            '.{st_HF[0].stats.channel[0:2]}@'\
+                                '{st_HF[0].stats.sampling_rate}'
 
             if variable not in self.spectra and variable in self.spectra_SP:
                 self.spectra[variable] = self.spectra_SP[variable]

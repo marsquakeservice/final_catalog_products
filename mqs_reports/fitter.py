@@ -836,11 +836,12 @@ def plot_spectra(fitter,
 
             try:
                 results = fitter.fit_for_component(
-                               fitting_parameters=fitting_parameters_pool,
-                               component=component
-                               )
+                    fitting_parameters=fitting_parameters_pool, 
+                    component=component)
+                
             except Exception as e:
-                print(f'Error fitter.fit_for_component with event {fitter.event.name} component {component}: {e}')
+                print(f'Error fitter.fit_for_component with event '\
+                    '{fitter.event.name} component {component}: {e}')
                 continue
 
             fig = plt.figure(figsize=(20,12))
@@ -861,7 +862,7 @@ def plot_spectra(fitter,
             fig.suptitle("Event {} {}/Q{} {} {} {}".format(
                     fitter.event.name, fitter.event.mars_event_type_short, 
                     fitter.event.quality, LF_streaminfo, HF_streaminfo, 
-                    component), fontsize='x-small')
+                    component), fontsize='large')
             
             _plot_spectra_top(
                     fitter, ax1, tr, component, spectral_windows,
