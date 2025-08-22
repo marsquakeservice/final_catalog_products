@@ -1114,10 +1114,11 @@ class Event:
 
                 if spectrum_variable:
                     self.spectra[variable] = spectrum_variable
-                    self.spectra['stream_info'] = \
-                        f'LF={st_LF[0].stats.station}.{st_LF[0].stats.location}'\
-                            '.{st_LF[0].stats.channel[0:2]}@'\
-                                '{st_LF[0].stats.sampling_rate}'
+                    self.spectra['stream_info'] = "{}.{}.{}@{}".format(
+                        st_LF[0].stats.station, st_LF[0].stats.station, 
+                        st_LF[0].stats.channel[0:2], 
+                        st_LF[0].stats.sampling_rate)
+                    
 
             if st_HF is not None:
                 spectrum_variable = dict()
@@ -1141,11 +1142,11 @@ class Event:
 
                 if spectrum_variable:
                     self.spectra_SP[variable] = spectrum_variable
-                    self.spectra_SP['stream_info'] = \
-                        f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}'\
-                            '.{st_HF[0].stats.channel[0:2]}@'\
-                                '{st_HF[0].stats.sampling_rate}'
-
+                    self.spectra['stream_info'] = "{}.{}.{}@{}".format(
+                        st_HF[0].stats.station, st_HF[0].stats.station, 
+                        st_HF[0].stats.channel[0:2], 
+                        st_HF[0].stats.sampling_rate)
+            
             if variable not in self.spectra and variable in self.spectra_SP:
                 self.spectra[variable] = self.spectra_SP[variable]
             if variable not in self.spectra_SP and variable in self.spectra:
@@ -1572,13 +1573,13 @@ class Event:
         if flip_axes:
             ax.set_ylim(0., 2.)
             ax.set_xlim(-230., -160.)
-            ax.set_ylabel('frequency / Hz', fontsize='medium')
-            ax.set_xlabel('power spectral density / m$^2$/Hz', fontsize='medium')
+            ax.set_ylabel('frequency / Hz', fontsize='large')
+            ax.set_xlabel('power spectral density / m$^2$/Hz', fontsize='large')
         else:
             ax.set_xlim(0., 2.)
             ax.set_ylim(-230., -160.)
-            ax.set_xlabel('frequency / Hz', fontsize='medium')
-            ax.set_ylabel('power spectral density / m$^2$/Hz', fontsize='medium')
+            ax.set_xlabel('frequency / Hz', fontsize='large')
+            ax.set_ylabel('power spectral density / m$^2$/Hz', fontsize='large')
         
         ax.set_title('Spectrum %s' % self.name, fontsize='x-large')
 
@@ -1724,10 +1725,10 @@ class Event:
         ax[0].set_yticklabels(angles)
         ax[0].set_xlim(-50, 550)
         ax[0].set_ylim(-1, nangles * 1.15)
-        ax[0].set_xlabel('time after P-wave', fontsize='medium')
-        ax[0].set_ylabel('Rotation angle', fontsize='medium')
-        ax[0].set_title('Radial component', fontsize='medium')
-        ax[1].set_title('Transversal component', fontsize='medium')
+        ax[0].set_xlabel('time after P-wave', fontsize='large')
+        ax[0].set_ylabel('Rotation angle', fontsize='large')
+        ax[0].set_title('Radial component', fontsize='large')
+        ax[1].set_title('Transversal component', fontsize='large')
         
         fig.suptitle('Event %s (%5.3f-%5.3f Hz)' %
                      (self.name, fmin, fmax), fontsize='x-large')
@@ -2198,9 +2199,9 @@ class Event:
             # a.set_xticks(np.arange(-300, 1000, 100), minor=False)
             a.set_xticks(np.arange(-300, 3000, 25), minor=True)
             if t_ref_type == 'P':
-                a.set_xlabel('time after P-wave', fontsize='medium')
+                a.set_xlabel('time after P-wave', fontsize='large')
             else:
-                a.set_xlabel('time after start time', fontsize='medium')
+                a.set_xlabel('time after start time', fontsize='large')
 
             a.grid(visible=True, which='both', axis='x', lw=0.2, alpha=0.3)
             a.grid(visible=True, which='major', axis='y', lw=0.2, alpha=0.3)
@@ -2211,16 +2212,16 @@ class Event:
         ax[0].set_xlim(tmin_plot, tmax_plot)
         ax[0].set_ylim(-1.5, nfreqs + 1.5)
         
-        ax[0].set_ylabel('frequency / Hz', fontsize='medium')
-        ax[0].set_title('Vertical', fontsize='medium')
+        ax[0].set_ylabel('frequency / Hz', fontsize='large')
+        ax[0].set_title('Vertical', fontsize='large')
 
         if rotate:
 
-            ax[1].set_title('Radial', fontsize='medium')
-            ax[2].set_title('Transverse', fontsize='medium')
+            ax[1].set_title('Radial', fontsize='large')
+            ax[2].set_title('Transverse', fontsize='large')
         else:
-            ax[1].set_title('North/South', fontsize='medium')
-            ax[2].set_title('East/West', fontsize='medium')
+            ax[1].set_title('North/South', fontsize='large')
+            ax[2].set_title('East/West', fontsize='large')
 
         # fig.suptitle( ('Event=%s LQ=%s Type=%s (%5.3f-%5.3f Hz) %s %s' %  (
         #     self.name, self.quality, self.mars_event_type_short, fmin, fmax, st_LF_desc, st_HF_desc)),
@@ -2408,9 +2409,9 @@ class Event:
         ax_fbs.set_xticks(np.arange(-300, 3000, 25), minor=True)
         
         if t_ref_type == 'P':
-            ax_fbs.set_xlabel('time after P-wave', fontsize='medium')
+            ax_fbs.set_xlabel('time after P-wave', fontsize='large')
         else:
-            ax_fbs.set_xlabel('time after start time', fontsize='medium')
+            ax_fbs.set_xlabel('time after start time', fontsize='large')
             
         ax_fbs.grid(visible=True, which='both', axis='x', lw=0.2, alpha=0.3)
         ax_fbs.grid(visible=True, which='major', axis='y', lw=0.2, alpha=0.3)
@@ -2418,7 +2419,7 @@ class Event:
                        ls='dashed', lw=1.0, c='k')
         ax_fbs.set_xlim(tmin_plot, tmax_plot)
         ax_fbs.set_ylim(-1.5, nfreqs + 1.5)
-        ax_fbs.set_ylabel('frequency', fontsize='medium')
+        ax_fbs.set_ylabel('frequency', fontsize='large')
 
         return freqs, envs_out
 
