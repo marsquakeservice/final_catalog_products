@@ -749,7 +749,7 @@ def plot_spectra(fitter,
                 time_windows=spectral_windows)
             
         except Exception as e:
-            print(f'Error fitter.swap_event with event {event.name}: {e}')
+            print(f"Error fitter.swap_event with event {event.name}: {e}")
             continue
 
         ev_folder = pjoin(dir_out, fitter.event.name)
@@ -758,9 +758,10 @@ def plot_spectra(fitter,
             os.makedirs(ev_folder)
 
         def plot_filename(ev, component):
-            return pjoin(ev_folder,
-                     'spectra_%s_SampRate_%s_Component_%s_Data_%s.png' %
-                     (ev.name, smprate, component, ev.wf_type) )
+            return pjoin(
+                ev_folder,
+                "spectra_{}_SampRate_{}_Component_{}_Data_{}.png".format(
+                    ev.name, smprate, component, ev.wf_type))
 
         fitting_parameters_pool = FittingParameterPool(
             event_name=fitter.event.name)
@@ -783,8 +784,10 @@ def plot_spectra(fitter,
                             [preset[1].strip()])
                     break
             if defaults is None:
-                print('Error: no default fitting parameters found for event' + fitter.event.name)
+                print("Error: no default fitting parameters found for event "\
+                    "{}".format(fitter.event.name))
                 continue
+            
             fitting_parameters_pool.set_parameters(defaults)
             fitting_parameters_pool.set_value(
                 None, 'is_manually_reviewed', False)
@@ -792,10 +795,14 @@ def plot_spectra(fitter,
         #
         # add missing info for component R and T
         #
-        fitting_parameters_pool.set_value("R",'fminP',fitting_parameters_pool.get_value("Z", 'fminP'))
-        fitting_parameters_pool.set_value("R",'fmaxP',fitting_parameters_pool.get_value("Z", 'fmaxP'))
-        fitting_parameters_pool.set_value("R",'fminS',fitting_parameters_pool.get_value("Z", 'fminS'))
-        fitting_parameters_pool.set_value("R",'fmaxS',fitting_parameters_pool.get_value("Z", 'fmaxS'))
+        fitting_parameters_pool.set_value(
+            "R",'fminP',fitting_parameters_pool.get_value("Z", 'fminP'))
+        fitting_parameters_pool.set_value(
+            "R",'fmaxP',fitting_parameters_pool.get_value("Z", 'fmaxP'))
+        fitting_parameters_pool.set_value(
+            "R",'fminS',fitting_parameters_pool.get_value("Z", 'fminS'))
+        fitting_parameters_pool.set_value(
+            "R",'fmaxS',fitting_parameters_pool.get_value("Z", 'fmaxS'))
 
         fitting_parameters_pool.set_value("T",'fminP',
                 min(fitting_parameters_pool.get_value("E", 'fminP'),

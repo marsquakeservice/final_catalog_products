@@ -1114,7 +1114,7 @@ class Event:
 
                 if spectrum_variable:
                     self.spectra[variable] = spectrum_variable
-                    self.spectra['stream_info'] = "LF={}.{}.{}@{}".format(
+                    self.spectra['stream_info'] = "LF: {}.{}.{}@{}".format(
                         st_LF[0].stats.station, st_LF[0].stats.location, 
                         st_LF[0].stats.channel[0:2], 
                         st_LF[0].stats.sampling_rate)
@@ -1142,7 +1142,7 @@ class Event:
 
                 if spectrum_variable:
                     self.spectra_SP[variable] = spectrum_variable
-                    self.spectra_SP['stream_info'] = "HF={}.{}.{}@{}".format(
+                    self.spectra_SP['stream_info'] = "HF: {}.{}.{}@{}".format(
                         st_HF[0].stats.station, st_HF[0].stats.location, 
                         st_HF[0].stats.channel[0:2], 
                         st_HF[0].stats.sampling_rate)

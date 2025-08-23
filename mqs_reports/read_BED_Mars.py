@@ -468,7 +468,7 @@ def read_JSON_Events(
         
         pref_dist_type = ev_info['preferred_distance_type']
         _, mars_ev_type_short = tools_catalog.get_event_types_for_table(
-            "", event_type)
+            "", ev_info['mars_event_type'])
         
         info_tuple = (ev_name, pref_dist_type, "{}/Q{}".format(
             mars_ev_type_short, ev_info['location_quality'][-1]))
