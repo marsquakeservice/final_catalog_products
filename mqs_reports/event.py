@@ -1005,13 +1005,9 @@ class Event:
         return available
 
 
-    def calc_spectra(self,
-                     winlen_sec,
-                     detick_nfsamp=0,
-                     padding=True,
-                     time_windows=None,
-                     rotate: bool = False,
-                     instrument: str = ''):
+    def calc_spectra(
+        self, winlen_sec, detick_nfsamp=0, padding=True, time_windows=None,
+        rotate: bool=False, instrument: str="", smprate: str=""):
 
         """
         Add spectra to event object.
@@ -1027,8 +1023,9 @@ class Event:
         :param padding: Zeropad signal by factor of 2 to smoothen spectra?
         """
 
-        print("calculating spectra for event {}, {}/Q{}".format(
-            self.name, self.mars_event_type_short, self.quality))
+        print("calculating spectra for event {}, {}/Q{}, smprate {}, "\
+            "ZRT {}".format(self.name, self.mars_event_type_short, 
+            self.quality, smprate, rotate))
         
         if not self._waveforms_read:
             raise RuntimeError('waveforms not read in Event object\n' +

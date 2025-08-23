@@ -147,7 +147,8 @@ class Fitter:
         self.fmax = dict(BB=1.5, XB=6.0, WB=6.0, LF=1.5, HF=4.0, VF=6.0)
     
     def swap_event(
-        self, event_name, detick_nfsamp, instrument, rotate, time_windows=None):
+        self, event_name, detick_nfsamp, instrument, rotate, time_windows=None,
+        smprate=""):
         """ 
         Change the current event, read its waveforms and calculate spectra 
         
@@ -162,7 +163,8 @@ class Fitter:
             #self.event.read_waveforms(inv=self.inv, sc3dir=self.path_sc3dir) 
             self.event.calc_spectra(
                 winlen_sec=20, detick_nfsamp=detick_nfsamp, 
-                time_windows=time_windows, instrument=instrument, rotate=rotate)
+                time_windows=time_windows, rotate=rotate, instrument=instrument, 
+                smprate=smprate)
         
         return self.event
     
@@ -662,7 +664,7 @@ def plot_spectra(fitter,
                  wf_type : str,
                  padding: bool=False,
                  rotate: bool=False,
-                 smprate: str='', # VBB_LF, SP_HF, LF+HF
+                 smprate: str="", # VBB_LF, SP_HF, LF+HF
                  force_products: bool=False) -> None:
 
     for event in tqdm(fitter.catalog, file=sys.stdout):
@@ -746,7 +748,7 @@ def plot_spectra(fitter,
                 event_name=event.name,
                 detick_nfsamp=(10 if wf_type != "DEGLITCHED" else 0),
                 instrument=instrument, rotate=rotate,
-                time_windows=spectral_windows)
+                time_windows=spectral_windows, smprate=smprate)
             
         except Exception as e:
             print(f"Error fitter.swap_event with event {event.name}: {e}")
