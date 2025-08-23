@@ -28,6 +28,7 @@ from lxml import etree
 from mqs_reports.event import Event
 from mqs_reports.event import PICK_METHOD_ALIGNED
 
+from marsprocessingtools import catalog as tools_catalog
 from marsprocessingtools import constants as cnt
 from marsprocessingtools import dbqueries
 from marsprocessingtools import utils as tools_utils
@@ -466,16 +467,17 @@ def read_JSON_Events(
             continue 
         
         pref_dist_type = ev_info['preferred_distance_type']
+        _, mars_ev_type_short = tools_catalog.get_event_types_for_table(
+            "", event_type)
+        
+        info_tuple = (ev_name, pref_dist_type, "{}/Q{}".format(
+            mars_ev_type_short, ev_info['location_quality'][-1]))
         
         if pref_dist_type is None:
-            event_names_no_expected_distance_type.append(
-                (ev_name, pref_dist_type,
-                    "Q{}".format(ev_info['location_quality'][-1])))
+            event_names_no_expected_distance_type.append(info_tuple)
                     
         elif pref_dist_type not in ('GUI', 'DL', None):
-            event_names_no_good_distance_type.append((
-                ev_name, pref_dist_type, 
-                "Q{}".format(ev_info['location_quality'][-1])))
+            event_names_no_good_distance_type.append(info_tuple)
         
         origin_time_iso = "{0}T{1}Z".format(*ev_info['origin_time'].split())
         
