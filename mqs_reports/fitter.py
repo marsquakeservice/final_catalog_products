@@ -140,11 +140,13 @@ class Fitter:
         logging.getLogger().info("[Fitter] Reading inventory")
         start_time = dt.datetime.now()
         self.inv = inventory
-        logging.getLogger().info("[Fitter] Reading inventory...DONE [{}]".format(timeit(start_time)))
+        logging.getLogger().info(
+            "[Fitter] Reading inventory...DONE [{}]".format(timeit(start_time)))
 
         self.event = None
         self.fmin = dict(BB=0.15, XB=0.15, WB=0.15, LF=0.15, HF=0.9, VF=1.1)
         self.fmax = dict(BB=1.5, XB=6.0, WB=6.0, LF=1.5, HF=4.0, VF=6.0)
+    
     
     def swap_event(
         self, event_name, detick_nfsamp, instrument, rotate, time_windows=None,
@@ -155,18 +157,26 @@ class Fitter:
         """
         
         if event_name not in self.get_event_names():
-            raise ValueError("event {} is not in the catalog".format(event_name))
+            raise ValueError(
+                "event {} is not in the catalog".format(event_name))
         else:
             self.event = self.catalog.select(name=event_name).events[0]
             
             # This would reset event.wf_type to RAW
             #self.event.read_waveforms(inv=self.inv, sc3dir=self.path_sc3dir) 
+            
+            print("calculating spectra for event {}, {}/Q{}, wf {}, smprate "\
+                "{}, ZRT {}".format(
+                    event_name, self.event.mars_event_type_short, 
+                    self.event.quality, self.event.wf_type, smprate, rotate))
+        
             self.event.calc_spectra(
                 winlen_sec=20, detick_nfsamp=detick_nfsamp, 
                 time_windows=time_windows, rotate=rotate, instrument=instrument, 
                 smprate=smprate)
         
         return self.event
+    
     
     def get_masked_noise(self):
         f_noise_masked = self.event.spectra['noise']['f']
@@ -662,7 +672,6 @@ def plot_spectra(fitter,
                  dir_out: str,
                  winlen_sec: float,
                  wf_type : str,
-                 padding: bool=False,
                  rotate: bool=False,
                  smprate: str="", # VBB_LF, SP_HF, LF+HF
                  force_products: bool=False) -> None:

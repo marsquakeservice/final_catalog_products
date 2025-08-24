@@ -1023,9 +1023,9 @@ class Event:
         :param padding: Zeropad signal by factor of 2 to smoothen spectra?
         """
 
-        print("calculating spectra for event {}, {}/Q{}, smprate {}, "\
-            "ZRT {}".format(self.name, self.mars_event_type_short, 
-            self.quality, smprate, rotate))
+        # print("calculating spectra for event {}, {}/Q{}, wf {}, smprate "\
+        #     "{}, ZRT {}".format(self.name, self.mars_event_type_short, 
+        #     self.quality, self.wf_type, smprate, rotate))
         
         if not self._waveforms_read:
             raise RuntimeError('waveforms not read in Event object\n' +
