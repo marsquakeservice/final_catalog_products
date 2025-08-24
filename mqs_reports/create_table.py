@@ -665,6 +665,14 @@ def define_arguments():
     helptext = 'Data type: RAW, DEGLITCHED, DENOISED'
     parser.add_argument('--data-type', help=helptext, default='RAW')
     
+    helptext = 'Orientation (one or more, ZNE, ZRT)'
+    parser.add_argument('-o', '--orientation', help=helptext, nargs='+', 
+        default=('ZNE', 'ZRT'))
+    
+    helptext = 'Filterbank norm (one or more, none, single, all)'
+    parser.add_argument('-n', '--norm', help=helptext, nargs='+', 
+        default=('none', 'single', 'all'))
+    
     helptext = 'force product re-creation'
     # parser.add_argument('--force-products', help=helptext, default=False)
     
@@ -715,11 +723,18 @@ if __name__ == '__main__':
         
         catalog.read_waveforms(
             inv=inv, wf_type=args.data_type, kind='DISP', sc3dir=args.sc3_dir)
-
+    
+    normtypes = []
+    for n in args.norm:
+        if n != 'none':
+            normtypes.append("{}_components".format(n))
+        else:
+            normtypes.append(n)
+    
     if 'all' in args.plot or 'filterbanks' in args.plot:
         for smprate in ('VBB_LF', 'SP_HF', 'LF+HF'):
             for rotate in (False, True):
-                for normtype in ('none', 'single_component', 'all_components'):
+                for normtype in ('none', 'single_components', 'all_components'):
                     
                     print("Plot filter banks for {} waveforms (smprate {}, "\
                         "norm {}, ZRT {})".format(
@@ -727,7 +742,9 @@ if __name__ == '__main__':
                     
                     catalog.plot_filterbanks(
                         dir_out='filterbanks', annotations=ann, 
-                        normtype=normtype, rotate=rotate, smprate=smprate)
+                        normtype=normtype, rotate=rotate, smprate=smprate,
+                        orientation=args.orientation, norm=normtypes,
+                        force_products=args.force_products)
 
     if 'all' in args.plot or 'spectral-fit' in args.plot:
         with open(args.input_fitparams) as json_data:
@@ -751,6 +768,7 @@ if __name__ == '__main__':
                     fitting_parameters_defaults=fitting_parameters_defaults,
                     dir_out='spect', winlen_sec=20.0, wf_type=args.data_type,
                     rotate=rotate, smprate=smprate, 
+                    orientation=args.orientation,
                     force_products=args.force_products)
 
     if 'all' in args.plot or 'table' in args.plot:

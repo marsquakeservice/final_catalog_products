@@ -1153,6 +1153,7 @@ class Event:
         for signal in self.spectra.keys():
             if signal == 'stream_info':
                 continue
+            
             if not rotate:
                 self.spectra[signal]['p_H'] = \
                     self.spectra[signal]['p_N'] + self.spectra[signal]['p_E']
@@ -1722,13 +1723,14 @@ class Event:
         ax[0].set_yticklabels(angles)
         ax[0].set_xlim(-50, 550)
         ax[0].set_ylim(-1, nangles * 1.15)
-        ax[0].set_xlabel('time after P-wave', fontsize='large')
-        ax[0].set_ylabel('Rotation angle', fontsize='large')
-        ax[0].set_title('Radial component', fontsize='large')
-        ax[1].set_title('Transversal component', fontsize='large')
+        ax[0].set_xlabel('time after P-wave', fontsize='medium')
+        ax[0].set_ylabel('Rotation angle', fontsize='medium')
+        
+        ax[0].set_title('Radial component', fontsize='medium')
+        ax[1].set_title('Transversal component', fontsize='medium')
         
         fig.suptitle('Event %s (%5.3f-%5.3f Hz)' %
-                     (self.name, fmin, fmax), fontsize='x-large')
+                     (self.name, fmin, fmax), fontsize='large')
         
         fig.savefig('rotations_%s_%3.1f_%3.1f_sec.png' %
                     (self.name, 1. / fmax, 1. / fmin),
@@ -1761,7 +1763,7 @@ class Event:
                         log: bool = False,
                         waveforms: bool = False,
                         normwindow: str = 'all',
-                        normtype: str = 'none', # 'single_component', 'all_components'
+                        normtype: str = 'none',
                         rotate: bool = False,
                         annotations: Annotations = None,
                         tmin_plot: float = None,
@@ -1848,7 +1850,7 @@ class Event:
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
 
-            st_LF_desc = f'LF={st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
+            st_LF_desc = f'LF: {st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
             st_HF_desc = ''
         
         elif instrument == 'VBB100':
@@ -1856,27 +1858,27 @@ class Event:
             st_HF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
             
             st_LF_desc = ''
-            st_HF_desc = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+            st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
         
         elif instrument == 'SP':
             st_LF = self.waveforms_SP.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_SP.select(channel='??[ENZ]').copy()
             st_LF_desc = ''
-            st_HF_desc = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+            st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
         
         elif instrument == 'VBB+VBB100':
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
             
-            st_LF_desc = f'LF={st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
-            st_HF_desc = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+            st_LF_desc = f'LF: {st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
+            st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
         
         elif instrument == 'VBB+SP':
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_SP.select(channel='??[ENZ]').copy()
             
-            st_LF_desc = f'LF={st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
-            st_HF_desc = f'HF={st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+            st_LF_desc = f'LF: {st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
+            st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
         
         else:
             raise ValueError(f'Invalid value for instrument: {instrument}')
@@ -2081,7 +2083,7 @@ class Event:
                     maxfac = freqs_data[ifreq]['maxfac'][trid]
                     offset = freqs_data[ifreq]['offset'][trid]
                 
-                elif normtype == 'single_component':
+                elif normtype == 'single_components':
                     maxfac = maxfac_tr[trid]
                     offset = offset_tr[trid]
                 
@@ -2196,9 +2198,9 @@ class Event:
             # a.set_xticks(np.arange(-300, 1000, 100), minor=False)
             a.set_xticks(np.arange(-300, 3000, 25), minor=True)
             if t_ref_type == 'P':
-                a.set_xlabel('time after P-wave', fontsize='large')
+                a.set_xlabel('time after P-wave', fontsize='medium')
             else:
-                a.set_xlabel('time after start time', fontsize='large')
+                a.set_xlabel('time after start time', fontsize='medium')
 
             a.grid(visible=True, which='both', axis='x', lw=0.2, alpha=0.3)
             a.grid(visible=True, which='major', axis='y', lw=0.2, alpha=0.3)
@@ -2209,16 +2211,16 @@ class Event:
         ax[0].set_xlim(tmin_plot, tmax_plot)
         ax[0].set_ylim(-1.5, nfreqs + 1.5)
         
-        ax[0].set_ylabel('frequency / Hz', fontsize='large')
-        ax[0].set_title('Vertical', fontsize='large')
+        ax[0].set_ylabel('frequency / Hz', fontsize='medium')
+        ax[0].set_title('vertical (Z)', fontsize='medium')
 
         if rotate:
 
-            ax[1].set_title('Radial', fontsize='large')
-            ax[2].set_title('Transverse', fontsize='large')
+            ax[1].set_title('radial (R)', fontsize='medium')
+            ax[2].set_title('transverse (T)', fontsize='medium')
         else:
-            ax[1].set_title('North/South', fontsize='large')
-            ax[2].set_title('East/West', fontsize='large')
+            ax[1].set_title('north/south (N)', fontsize='medium')
+            ax[2].set_title('east/west (E)', fontsize='medium')
 
         # fig.suptitle( ('Event=%s LQ=%s Type=%s (%5.3f-%5.3f Hz) %s %s' %  (
         #     self.name, self.quality, self.mars_event_type_short, fmin, fmax, st_LF_desc, st_HF_desc)),
@@ -2226,7 +2228,7 @@ class Event:
 
         fig.suptitle(("Event {} {}/Q{} ({:5.3f}-{:5.3f} Hz), {} {}".format(
             self.name, self.mars_event_type_short, self.quality, fmin, fmax, 
-            st_LF_desc, st_HF_desc)), fontsize='x-large')
+            st_LF_desc, st_HF_desc)), fontsize='large')
         
 
         plt.subplots_adjust(top=0.911,
@@ -2406,9 +2408,9 @@ class Event:
         ax_fbs.set_xticks(np.arange(-300, 3000, 25), minor=True)
         
         if t_ref_type == 'P':
-            ax_fbs.set_xlabel('time after P-wave', fontsize='large')
+            ax_fbs.set_xlabel('time after P-wave', fontsize='medium')
         else:
-            ax_fbs.set_xlabel('time after start time', fontsize='large')
+            ax_fbs.set_xlabel('time after start time', fontsize='medium')
             
         ax_fbs.grid(visible=True, which='both', axis='x', lw=0.2, alpha=0.3)
         ax_fbs.grid(visible=True, which='major', axis='y', lw=0.2, alpha=0.3)
@@ -2416,7 +2418,7 @@ class Event:
                        ls='dashed', lw=1.0, c='k')
         ax_fbs.set_xlim(tmin_plot, tmax_plot)
         ax_fbs.set_ylim(-1.5, nfreqs + 1.5)
-        ax_fbs.set_ylabel('frequency', fontsize='large')
+        ax_fbs.set_ylabel('frequency', fontsize='medium')
 
         return freqs, envs_out
 

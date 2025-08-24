@@ -666,6 +666,7 @@ from obspy import UTCDateTime
 
 sns.set_theme(style="darkgrid")
 
+
 def plot_spectra(fitter,
                  fitting_parameters,
                  fitting_parameters_defaults,
@@ -673,17 +674,25 @@ def plot_spectra(fitter,
                  winlen_sec: float,
                  wf_type : str,
                  rotate: bool=False,
-                 smprate: str="", # VBB_LF, SP_HF, LF+HF
+                 smprate: str="",
+                 orientation: list=[],
                  force_products: bool=False) -> None:
-
+    
+    print("fitter: calculate/plot spectra for {} waveforms (smprate {}, "\
+        "ZRT {})".format(wf_type, smprate, rotate))
+    
     for event in tqdm(fitter.catalog, file=sys.stdout):
-
-        if rotate and event.baz is None:
-            continue
-
+        
         if event.waveforms_VBB is None:
+            print("fitter: event {}, no VBB waveforms exist, skipping".format(
+                event.name))
             continue
-
+        
+        if rotate and event.baz is None:
+            print("fitter: event {}, rotation to ZRT requested but no BAZ "\
+                "exists, skipping".format(event.name))
+            continue
+        
         avail_rate = event.available_sampling_rates()
         if smprate == 'VBB_LF':
             if avail_rate['VBB_Z'] is None or \
@@ -752,6 +761,10 @@ def plot_spectra(fitter,
                 'P_spectral_start': p_start, 'P_spectral_end': p_end,
                 'S_spectral_start': s_start, 'S_spectral_end': s_end}
 
+        print("fitter: swap events for event {}, {}/Q{}, wf {}, smprate "\
+            "{}, ZRT {}".format(event.name, event.mars_event_type_short, 
+                event.quality, event.wf_type, smprate, rotate))
+            
         try:
             fitter.swap_event(
                 event_name=event.name,

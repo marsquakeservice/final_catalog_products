@@ -15,9 +15,12 @@ Marsquake service Mars event catalogue
 """
 
 import os
+
 import numpy as np
+
 from scipy.interpolate import interp1d
 from scipy.optimize import minimize
+
 from magnitudes import lorentz_att, calc_magnitude, lorentz
 
 tstarfac = dict(P=1./3, S=1.)

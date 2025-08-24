@@ -1194,20 +1194,43 @@ class Catalog:
             self.select(name=event_name).events[0].fnam_report = fnam
 
 
-    def plot_filterbanks(self,
-                         dir_out: str='filterbanks',
-                         annotations: Annotations=None,
-                         normtype: str='single_component',
-                         rotate: bool=False,
-                         smprate: str ='' # VBB_LF, SP_HF, LF+HF
-                         ):
+    def plot_filterbanks(
+        self, dir_out: str='filterbanks', annotations: Annotations=None,
+        normtype: str='none', rotate: bool=False, smprate: str ="",
+        orientation: list=[], norm: list=[], force_products: bool=False):
 
+        print("catalog: available normtypes: {}".format(norm))
+        print("catalog: requested normtypes: {}".format(normtype))
+        
+        if normtype not in norm:
+            print("catalog: plot_filterbanks, norm {} not requested".format(
+                normtype))
+            return
+            
+        if (not rotate and 'ZNE' not in orientation):
+            print("catalog: plot_filterbanks, ZNE not requested")
+            return 
+        
+        if (not rotate and 'ZNE' not in orientation):
+            print("catalog: plot_filterbanks, ZNE not requested")
+            return 
+        
+        if (rotate and 'ZRT' not in orientation):
+            print("catalog: plot_filterbanks, ZRT not requested")
+            return 
+        
         for event in tqdm(self, file=stdout):
 
-            if rotate and event.baz is None:
-                continue
-
             if event.waveforms_VBB is None:
+                print("catalog: event {}, no VBB waveforms exist, "\
+                    "skipping".format(event.name))
+                continue
+        
+            
+            
+            if rotate and event.baz is None:
+                print("catalog: event {}, rotation to ZRT requested but no BAZ "\
+                    "exists, skipping".format(event.name))
                 continue
 
             fmax_LF = 8.
@@ -1262,6 +1285,8 @@ class Catalog:
             # print("ev {}: plotting filterbanks for smprate {}, instrument "\
             #     "{}".format(event.name, smprate, instrument))
             
+            
+        
             if event.mars_event_type_short in ['LF', 'WB', 'BB']:
                 if 'S' in event.picks and 'P' in event.picks and \
                         len(event.picks['S']) * len(event.picks['P']) > 0:
@@ -1301,27 +1326,33 @@ class Catalog:
                 rot = 'ZRT' if rotate else 'ZNE'
                 return pjoin(
                     ev_folder,
-                    'filterbank_%s_Zoom_%s_SampRate_%s_Norm_%s_Rotation_%s_Data_%s.png' % (
+                    "filterbank_{}_Zoom_{}_SampRate_{}_Norm_{}_Rotation_{}_"\
+                    "Data_{}.png".format(
                         ev.name, zoom, smprate, normtype, rot, ev.wf_type))
 
             fnam = plot_filename(event, 'out')
 
             hasdata = False
             
-            if not pexists(fnam):
+            if not pexists(fnam) or force_products:
                 
                 try:
-                    # print("plot for norm 'all'")
-                    event.plot_filterbank(normwindow='all', annotations=annotations,
-                                          starttime=event.starttime - 300.,
-                                          endtime=event.endtime + 300.,
-                                          instrument=instrument,
-                                          fnam=fnam, fmin=fmin, fmax=fmax, df=df,
-                                          normtype=normtype, rotate=rotate)
+                    print("catalog: plot filterbanks for event {}, {}/Q{}, "\
+                        "wf {}, smprate {}, ZRT {}, norm {}".format(
+                        event.name, event.mars_event_type_short, event.quality, 
+                        event.wf_type, smprate, rotate, normtype))
+            
+                    event.plot_filterbank(
+                        normwindow='all', annotations=annotations,
+                        starttime=event.starttime - 300.0,
+                        endtime=event.endtime + 300.0,
+                        instrument=instrument,
+                        fnam=fnam, fmin=fmin, fmax=fmax, df=df,
+                        normtype=normtype, rotate=rotate)
                 
                 except (AttributeError, IndexError) as err:
-                    print( f'Exception in filterbank for event "\
-                        "{event.name}: {err}')
+                    print( f"Exception in filterbank for event "\
+                        "{event.name}: {err}")
                 
                 else:
                     hasdata = True
@@ -1330,10 +1361,14 @@ class Catalog:
                 
                 fnam = plot_filename(event, 'in')
                 try:
-                    if not pexists(fnam):
+                    if not pexists(fnam) or force_products:
                         
                         # TODO(fab): use event.plot_parameters['filterbanks']['t_P']
-                        # print("plot for norm 'in'")
+                        print("catalog: plot filterbanks for event {}, {}/Q{}, "\
+                            "wf {}, smprate {}, ZRT {}, norm {}".format(
+                            event.name, event.mars_event_type_short, event.quality, 
+                            event.wf_type, smprate, rotate, normtype))
+                    
                         event.plot_filterbank(starttime=t_P - 300.,
                                               endtime=t_P + 1100.,
                                               normwindow='S',
@@ -1346,8 +1381,12 @@ class Catalog:
 
                     if t_S is not None:
                         fnam = plot_filename(event, 'phases')
-                        if not pexists(fnam):
-                            # print("plot for norm 'phases'")
+                        if not pexists(fnam) or force_products:
+                            print("catalog: plot filterbanks for event {}, {}/Q{}, "\
+                                "wf {}, smprate {}, ZRT {}, norm {}".format(
+                                event.name, event.mars_event_type_short, event.quality, 
+                                event.wf_type, smprate, rotate, normtype))
+                    
                             event.plot_filterbank(starttime=t_P - 120.,
                                                   endtime=t_S + 240.,
                                                   normwindow='S',
@@ -1360,8 +1399,8 @@ class Catalog:
                                                   normtype=normtype, rotate=rotate)
                 
                 except (IndexError, AttributeError) as err:
-                    print(f'Exception in filterbank for event "\
-                        "{event.name}: {err}')
+                    print(f"Exception in filterbank for event "\
+                        "{event.name}: {err}")
                     
             plt.close()
 
