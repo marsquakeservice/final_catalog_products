@@ -14,7 +14,11 @@ Marsquake service Mars event catalogue
     GPLv3
 """
 
+import copy
 import inspect
+import io
+import json
+import pickle
 import warnings
 
 from csv import DictReader
@@ -108,8 +112,7 @@ FILTERBANK_PLOT_SCALE_FACTOR = 4
 
 PICK_METHOD_ALIGNED = 'aligned'
 
-# left-over from branch fab, ELYSE
-STATION_USE = 'ELYDL'
+PICKLE_EXTENSION = "pickle"
 
 
 class Event:
@@ -630,11 +633,6 @@ class Event:
         
         event_path = pjoin(dir_cache, "{}".format(self.name))
         waveform_path = pjoin(event_path, 'waveforms')
-        
-        # this is a left-over from branch fab
-        # waveform_path = pjoin(
-        #     event_path, 'waveforms', "{}.{}".format(station, location_code))
-        
         origin_path = pjoin(event_path, 'origin_id.txt')
         
         success = False
@@ -1084,16 +1082,18 @@ class Event:
             if st_HF is not None:
                 st_HF.rotate('NE->RT', back_azimuth=self.baz)
 
-
         self.spectra = dict()
         self.spectra_SP = dict()
         
         variables = ('all', 'noise', 'P', 'S')
         
         for twin, variable in zip(twins, variables):
+            
             if len(twin[0]) == 0:
                 continue
+            
             if st_LF is not None:
+                
                 spectrum_variable = dict()
                 for chan in (['Z','R','T'] if rotate else ['Z','N','E']):
                     st_sel = st_LF.select(channel='??' + chan).copy()
@@ -1173,12 +1173,9 @@ class Event:
                 self.spectra_SP[signal]['p_H'] = \
                     self.spectra_SP[signal]['p_T'] + self.spectra_SP[signal]['p_R']
 
-        self.amplitudes = {'A0': None,
-                           'tstar': None,
-                           'A_24': None,
-                           'f_24': None,
-                           'f_c': None,
-                           'width_24': None}
+        self.amplitudes = {
+            'A0': None, 'tstar': None, 'A_24': None, 'f_24': None, 'f_c': None,
+            'width_24': None}
 
         if self.name in mag_exc['events_A0']:
             mag_type = "MFB"
@@ -1192,6 +1189,7 @@ class Event:
         if 'noise' in self.spectra:
             f_noise = self.spectra['noise']['f']
             p_noise = self.spectra['noise']['p_Z']
+            
             for signal in ['S', 'P', 'all']:
                 amplitudes = None
                 if signal in self.spectra:
@@ -1207,12 +1205,12 @@ class Event:
                         p_sig = self.spectra_SP[signal][comp]
                     if p_sig is not None:
                         f_sig = self.spectra[signal]['f']
-                    amplitudes = fit_spectra(f_sig=f_sig,
-                                             f_noise=f_noise,
-                                             p_sig=p_sig,
-                                             p_noise=p_noise,
-                                             A0_fix=A0_fix,
-                                             event_type=self.mars_event_type_short)
+                    
+                    amplitudes = fit_spectra(
+                        f_sig=f_sig, f_noise=f_noise, p_sig=p_sig, 
+                        p_noise=p_noise, A0_fix=A0_fix,
+                        event_type=self.mars_event_type_short)
+                    
                 if amplitudes is not None:
                     break
             
@@ -1224,6 +1222,28 @@ class Event:
 
         self._spectra_available = True
 
+        # write spectra to JSON files, in event/Sxxxxy/ directory
+        event_path = pjoin("./events", "{}".format(self.name))
+        spectra_path = pjoin(event_path, 'spectra')
+        
+        # self.wf_type, smprate, orientation
+        orientation = "ZRT" if rotate else "ZNE" 
+        spectra_dict_path = pjoin(
+            spectra_path, "{}_spectra_{}_{}_{}.{}".format(
+                self.name, self.wf_type, smprate, orientation, 
+                PICKLE_EXTENSION))
+        
+        makedirs(spectra_path, exist_ok=True)
+        
+        spectra_dict = copy.deepcopy(self.spectra)
+        spectra_dict.update(copy.deepcopy(self.spectra_SP))
+        
+        with io.open(spectra_dict_path, 'wb') as of:
+            pickle.dump(spectra_dict, of, pickle.HIGHEST_PROTOCOL)
+                        
+        del spectra_dict
+        
+        
     def pick_amplitude(self,
                        pick: str,
                        comp: str,
