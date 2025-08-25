@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Polarization</title>
+</head>
+<body>
+
+<table width="99%" style="text-align:center">
+  <tr>
+    <th>Author</th>
+    <th>Data Type</th>
+    <th>Zoom</th>
+  </tr>
+  
+  <tr>
+     <td>
+<input type="radio" onclick="showImg()" name="author" id="author_GZ" value="GZ" checked />
+<label for="author_GZ" id="author_GZ_label">GZ</label>
+
+<input type="radio" onclick="showImg()" name="author" id="author_ND" value="ND" />
+<label for="author_ND" id="author_ND_label">ND</label>
+     </td>
+     
+     <td>
+<input type="radio" onclick="showImg()" name="datatype" id="datatype_RAW" value="raw" checked />
+<label for="datatype_RAW" id="datatype_RAW_label">Raw</label>
+
+<input type="radio" onclick="showImg()" name="datatype" id="datatype_DEGLITCHED" value="deglitched" />
+<label for="datatype_DEGLITCHED" id="datatype_DEGLITCHED_label">Deglitched</label>
+
+<input type="radio" onclick="showImg()" name="datatype" id="datatype_DENOISED" value="denoised" />
+<label for="datatype_DENOISED" id="datatype_DENOISED_label">Denoised</label>
+    </td>
+
+    <td>
+<input type="radio" onclick="showImg()" name="zoom" id="zoom_Out" value="Overview" checked />
+<label for="zoom_Out" id="zoom_Out_label">Overview</label>
+
+<input type="radio" onclick="showImg()" name="zoom" id="zoom_In" value="Zoom" />
+<label for="zoom_In" id="zoom_In_label">Zoom</label>
+    </td>
+    
+  </tr>
+  <!-- <tr><td colspan="5"><p id="img_filename">foobar</p></td></tr> -->
+  
+  <tr>
+    <td colspan="5">
+       <div style="position:fixed; width:100%; height:100%">
+        <img id="plot" src="" style="height:90%;">
+       </div>
+    </td>
+  </tr>
+</table>
+
+<script>
+
+const urlParams = new URLSearchParams(window.location.search);
+
+var eventId = urlParams.get('eventId');
+
+var hasGZ = urlParams.get('hasGZ');
+var hasND = urlParams.get('hasND');
+
+var hasDeglitched = urlParams.get('hasDeglitched');
+var hasDenoised = urlParams.get('hasDenoised');
+
+var hasZoomInGZ = urlParams.get('hasZoomIn_GZ');
+var hasZoomInND = urlParams.get('hasZoomIn_ND');
+
+var downloadDir = './polarization';
+
+// init input
+var author = "GZ";
+var datatype = "raw";
+var zoom = "Overview";
+
+if ( window.hasGZ == 'yes') {
+    window.author = "GZ";
+}
+else if ( window.hasND == 'yes') {
+    window.author = "ND";
+}
+
+var plot = document.getElementById("plot");
+//var img_par = document.getElementById("img_filename");
+    
+//window.img_par.innerHTML = window.author;
+
+document.title = "Polarization " + eventId
+
+// general disabling of radio buttons
+if ( window.hasGZ != 'yes') {
+   document.getElementById('author_GZ').disabled = true;
+   document.getElementById('author_GZ_label').style.opacity = 0.5;
+}
+
+if ( window.hasND != 'yes') {
+   document.getElementById('author_ND').disabled = true;
+   document.getElementById('author_ND_label').style.opacity = 0.5;
+}
+
+if ( window.hasDeglitched != 'yes') {
+    document.getElementById('datatype_DEGLITCHED').disabled = true;
+    document.getElementById('datatype_DEGLITCHED_label').style.opacity = 0.5;
+}
+
+if ( window.hasDenoised != 'yes') {
+    document.getElementById('datatype_DENOISED').disabled = true;
+    document.getElementById('datatype_DENOISED_label').style.opacity = 0.5;
+}
+
+showImg();
+
+function showImg() {
+
+    if ( document.getElementById("author_GZ").checked ) {
+        
+        document.getElementById("datatype_RAW").checked = true;
+        
+        document.getElementById('datatype_DEGLITCHED').disabled = true;
+        document.getElementById('datatype_DEGLITCHED_label').style.opacity = 0.5;
+        
+        document.getElementById('datatype_DENOISED').disabled = true;
+        document.getElementById('datatype_DENOISED_label').style.opacity = 0.5;
+        
+        if ( window.hasZoomInGZ != 'yes' ) {
+            document.getElementById('zoom_In').disabled = true;
+            document.getElementById('zoom_In_label').style.opacity = 0.5;
+            
+            document.getElementById("zoom_Out").checked = true;
+        }
+        else {
+            document.getElementById('zoom_In').disabled = false;
+            document.getElementById('zoom_In_label').style.opacity = 1.0;
+        }
+        
+    } else {
+        if ( window.hasDeglitched == 'yes') {
+            document.getElementById('datatype_DEGLITCHED').disabled = false;
+            document.getElementById('datatype_DEGLITCHED_label').style.opacity = 1.0;
+        }
+
+        if ( window.hasDenoised == 'yes') {
+            document.getElementById('datatype_DENOISED').disabled = false;
+            document.getElementById('datatype_DENOISED_label').style.opacity = 1.0;
+        }
+        
+        if ( window.hasZoomInND != 'yes' ) {
+            document.getElementById('zoom_In').disabled = true;
+            document.getElementById('zoom_In_label').style.opacity = 0.5;
+            
+            document.getElementById("zoom_Out").checked = true;
+        }
+        else {
+            document.getElementById('zoom_In').disabled = false;
+            document.getElementById('zoom_In_label').style.opacity = 1.0;
+        }
+    }
+    
+    // user input
+    window.author = document.querySelector('input[name="author"]:checked').value;
+    window.datatype = document.querySelector('input[name="datatype"]:checked').value;
+    window.zoom = document.querySelector('input[name="zoom"]:checked').value;
+    
+    var zoom_tkn = 'overview';
+    var channel_tkn = 'ELYSE.02.BH';
+    
+    var sub_dir = '';
+    var url = '';
+    
+    //window.img_par.innerHTML = window.author;
+    
+    if ( window.author == 'GZ' ) {
+    
+        sub_dir = `GZ/${zoom}`
+        url = `${window.downloadDir}/${sub_dir}/${window.eventId}.png`;
+    }
+    else if ( window.author == 'ND' ) {
+    
+        sub_dir = `ND/${zoom}/${datatype}`;
+        
+        if ( zoom == 'Overview') {
+            zoom_tkn = 'overview';
+        }
+        else {
+            zoom_tkn = 'fixed';
+        }
+        
+        if ( datatype == 'deglitched') {
+            channel_tkn = 'ELYDG.00.BH';
+        }
+        else if ( datatype == 'denoised') {
+            channel_tkn = 'ELYDL.03.BH';
+        }
+        
+        url = `${window.downloadDir}/${sub_dir}/${window.eventId}_${datatype}_BAZ${zoom_tkn}_${channel_tkn}.png`;
+    }
+    
+    //window.img_par.innerHTML = window.author + ": " + url;
+    plot.src = url;
+}
+
+</script>
+</body>
+</html> 
+

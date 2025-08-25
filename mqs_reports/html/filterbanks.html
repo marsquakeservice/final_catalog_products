@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Filterbanks</title>
+</head>
+<body>
+
+<table width='99%' style="text-align:center">
+  <tr>
+    <th>Sample Rate</th>
+    <th>Data Type</th>
+    <th>Orientation</th>
+    <th>Normalization</th>
+    <th>Zoom</th>
+    <th></th>
+  </tr>
+  <tr>
+     <td>
+<input type="radio" onclick="showImg()" name="samprate" id="samprate_VBB_LF" value="VBB_LF" checked><label for="samprate_VBB_LF" id="samprate_VBB_LF_label">VBB_LF</label>
+<input type="radio" onclick="showImg()" name="samprate" id="samprate_SP_HF" value="SP_HF"><label for="samprate_SP_HF" id="samprate_SP_HF_label">SP_HF</label>
+<input type="radio" onclick="showImg()" name="samprate" id="samprate_LF+HF" value="LF+HF"><label for="samprate_LF+HF" id="samprate_LF+HF_label">LF+HF</label>
+     </td>
+     <td>
+<input type="radio" onclick="showImg()" name="datatype" id="datatype_RAW" value="RAW" checked><label for="datatype_RAW" id="datatype_RAW_label">Raw</label>
+<input type="radio" onclick="showImg()" name="datatype" id="datatype_DEGLITCHED" value="DEGLITCHED"><label for="datatype_DEGLITCHED" id="datatype_DEGLITCHED_label">Deglitched</label>
+<input type="radio" onclick="showImg()" name="datatype" id="datatype_DENOISED" value="DENOISED"><label for="datatype_DENOISED" id="datatype_DENOISED_label">Denoised</label>
+     </td>
+     <td>
+<input type="radio" onclick="showImg()" name="rotation" id="rotation_ZNE" value="ZNE" checked><label for="rotation_ZNE"  id="rotation_ZNE_label">ZNE</label>
+<input type="radio" onclick="showImg()" name="rotation" id="rotation_ZRT" value="ZRT"><label for="rotation_ZRT" id="rotation_ZRT_label">ZRT</label>
+     </td>
+     <td>
+<input type="radio" onclick="showImg()" name="normalization" id="normalization_none" value="none" checked><label for="normalization_none">None</label>
+<input type="radio" onclick="showImg()" name="normalization" id="normalization_single_trace" value="single_component">
+    <label for="normalization_single_trace" id="normalization_single_trace_label">Per Component</label>
+<input type="radio" onclick="showImg()" name="normalization" id="normalization_all_traces" value="all_components">
+    <label for="normalization_all_traces" id="normalization_all_traces_label">Overall</label>
+     </td>
+     <td>
+<input type="radio" onclick="showImg()" name="zoom" id="zoom_Out" value="out" checked><label for="zoom_Out" id="zoom_Out_label">Out</label>
+<input type="radio" onclick="showImg()" name="zoom" id="zoom_In" value="in"><label for="zoom_In" id="zoom_In_label">In</label>
+<input type="radio" onclick="showImg()" name="zoom" id="zoom_Phases" value="phases"><label for="zoom_Phases" id="zoom_Phases_label">Phases</label>
+     </td>
+  </tr>
+  <tr>
+    <td colspan="5" >
+       <div style="position:fixed; height:100%; width:100%;">
+        <img id="plot" src="" style="height:90%">
+       </div>
+    </td>
+  </tr>
+</table>
+
+<script>
+
+const urlParams = new URLSearchParams(window.location.search);
+
+var eventId = urlParams.get('eventId');
+var hasSP = urlParams.get('hasSP');
+var hasLFHF = urlParams.get('hasLFHF');
+var hasRT = urlParams.get('hasRT');
+var hasDeglitched = urlParams.get('hasDeglitched');
+var hasDenoised = urlParams.get('hasDenoised');
+var hasZoomIn = urlParams.get('hasZoomIn');
+var hasZoomPh = urlParams.get('hasZoomPh');
+var hasNormSC = urlParams.get('hasNormSC');
+var hasNormAC = urlParams.get('hasNormAC');
+
+var downloadDir = `./filterbanks/${window.eventId}`
+
+document.title="Filterbanks " + eventId
+
+if ( window.hasRT != 'yes') {
+   document.getElementById('rotation_ZRT').disabled = true;
+   document.getElementById('rotation_ZRT_label').style.opacity = 0.5;
+}
+
+if ( window.hasDeglitched != 'yes') {
+    document.getElementById('datatype_DEGLITCHED').disabled = true;
+    document.getElementById('datatype_DEGLITCHED_label').style.opacity = 0.5;
+}
+
+if ( window.hasDenoised != 'yes') {
+    document.getElementById('datatype_DENOISED').disabled = true;
+    document.getElementById('datatype_DENOISED_label').style.opacity = 0.5;
+}
+
+if ( window.hasZoomIn != 'yes') {
+    document.getElementById('zoom_In').disabled = true;
+    document.getElementById('zoom_In_label').style.opacity = 0.5;
+}
+
+if ( window.hasZoomPh != 'yes') {
+    document.getElementById('zoom_Phases').disabled = true;
+    document.getElementById('zoom_Phases_label').style.opacity = 0.5;
+}
+
+if ( window.hasNormSC != 'yes') {
+    document.getElementById('normalization_single_trace').disabled = true;
+    document.getElementById('normalization_single_trace_label').style.opacity = 0.5;
+}
+
+if ( window.hasNormAC != 'yes') {
+    document.getElementById('normalization_all_traces').disabled = true;
+    document.getElementById('normalization_all_traces_label').style.opacity = 0.5;
+}
+
+showImg();
+
+function showImg() {
+    if ( ! document.getElementById("datatype_RAW").checked ) {
+        document.getElementById('samprate_VBB_LF').checked = true;
+        document.getElementById('samprate_SP_HF').disabled = true;
+        document.getElementById('samprate_LF+HF').disabled = true;
+        document.getElementById('samprate_SP_HF_label').style.opacity = 0.5;
+        document.getElementById('samprate_LF+HF_label').style.opacity = 0.5;
+    } else  {
+        if ( window.hasSP == 'yes') {
+            document.getElementById('samprate_SP_HF').disabled = false;
+            document.getElementById('samprate_SP_HF_label').style.opacity = 1;
+        }
+        else {
+            document.getElementById('samprate_SP_HF').disabled = true;
+            document.getElementById('samprate_SP_HF_label').style.opacity = 0.5;
+        }
+        if ( window.hasLFHF == 'yes') {
+            document.getElementById('samprate_LF+HF').disabled = false;
+            document.getElementById('samprate_LF+HF_label').style.opacity = 1;
+        }
+        else {
+            document.getElementById('samprate_LF+HF').disabled = true;
+            document.getElementById('samprate_LF+HF_label').style.opacity = 0.5;
+        }
+    }
+
+    var plot = document.getElementById("plot");
+    var smprate = document.querySelector('input[name="samprate"]:checked').value;
+    var datatype = document.querySelector('input[name="datatype"]:checked').value;
+    var rotation = document.querySelector('input[name="rotation"]:checked').value;
+    var normalization = document.querySelector('input[name="normalization"]:checked').value;
+    var zoom = document.querySelector('input[name="zoom"]:checked').value;
+    
+    var url=`${window.downloadDir}/filterbank_${window.eventId}_Zoom_${zoom}_SampRate_${smprate}_Norm_${normalization}_Rotation_${rotation}_Data_${datatype}.png`
+    
+    plot.src=url
+}
+</script>
+</body>
+</html> 
+

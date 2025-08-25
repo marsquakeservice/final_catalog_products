@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Spectra</title>
+</head>
+<body>
+
+<table width='99%' style="text-align:center">
+  <tr>
+    <th>Sample Rate</th>
+    <th>Data Type</th>
+    <th>Component</th>
+    <th></th>
+  </tr>
+  <tr>
+     <td>
+<input type="radio" onclick="showImg()" name="samprate" id="samprate_VBB_LF" value="VBB_LF" checked><label for="samprate_VBB_LF" id="samprate_VBB_LF_label">VBB_LF</label>
+<input type="radio" onclick="showImg()" name="samprate" id="samprate_SP_HF" value="SP_HF"><label for="samprate_SP_HF" id="samprate_SP_HF_label">SP_HF</label>
+<input type="radio" onclick="showImg()" name="samprate" id="samprate_LF+HF" value="LF+HF"><label for="samprate_LF+HF" id="samprate_LF+HF_label">LF+HF</label>
+     </td>
+     <td>
+<input type="radio" onclick="showImg()" name="datatype" id="datatype_RAW" value="RAW" checked><label for="datatype_RAW" id="datatype_RAW_label">Raw</label>
+<input type="radio" onclick="showImg()" name="datatype" id="datatype_DEGLITCHED" value="DEGLITCHED"><label for="datatype_DEGLITCHED" id="datatype_DEGLITCHED_label">Deglitched</label>
+<input type="radio" onclick="showImg()" name="datatype" id="datatype_DENOISED" value="DENOISED"><label for="datatype_DENOISED" id="datatype_DENOISED_label">Denoised</label>
+     </td>
+     <td>
+<input type="radio" onclick="showImg()" name="component" id="component_Z" value="Z" checked><label for="component_Z" id="component_Z_label">Z</label>
+<input type="radio" onclick="showImg()" name="component" id="component_N" value="N"><label for="component_N" id="component_N_label">N</label>
+<input type="radio" onclick="showImg()" name="component" id="component_E" value="E"><label for="component_E" id="component_E_label">E</label>
+<input type="radio" onclick="showImg()" name="component" id="component_R" value="R"><label for="component_R" id="component_R_label">R</label>
+<input type="radio" onclick="showImg()" name="component" id="component_T" value="T"><label for="component_T" id="component_T_label">T</label>
+     </td>
+  </tr>
+  <tr>
+    <td colspan="5" >
+     <div style="position:fixed; height:100%; width:100%;">
+      <img id="plot" src="" style="height:95%">
+     </div>
+    </td>
+  </tr>
+</table>
+
+<script>
+
+const urlParams = new URLSearchParams(window.location.search);
+
+var eventId = urlParams.get('eventId');
+var hasSP = urlParams.get('hasSP');
+var hasLFHF = urlParams.get('hasLFHF');
+var hasRT = urlParams.get('hasRT');
+var hasDeglitched = urlParams.get('hasDeglitched');
+var hasDenoised = urlParams.get('hasDenoised');
+
+var downloadDir = `./spect/${window.eventId}`
+document.title="Spectra fitting " + eventId
+
+if ( window.hasRT != 'yes') {
+   document.getElementById('component_R').disabled = true;
+   document.getElementById('component_T').disabled = true;
+   document.getElementById('component_R_label').style.opacity = 0.5;
+   document.getElementById('component_T_label').style.opacity = 0.5;
+}
+
+if ( window.hasDeglitched != 'yes') {
+    document.getElementById('datatype_DEGLITCHED').disabled = true;
+    document.getElementById('datatype_DEGLITCHED_label').style.opacity = 0.5;
+}
+
+if ( window.hasDenoised != 'yes') {
+    document.getElementById('datatype_DENOISED').disabled = true;
+    document.getElementById('datatype_DENOISED_label').style.opacity = 0.5;
+}
+
+showImg();
+
+function showImg() {
+    if ( ! document.getElementById("datatype_RAW").checked ) {
+        document.getElementById('samprate_VBB_LF').checked = true;
+        document.getElementById('samprate_SP_HF').disabled = true;
+        document.getElementById('samprate_LF+HF').disabled = true;
+        document.getElementById('samprate_SP_HF_label').style.opacity = 0.5;
+        document.getElementById('samprate_LF+HF_label').style.opacity = 0.5;
+    } else  {
+        if ( window.hasSP == 'yes') {
+            document.getElementById('samprate_SP_HF').disabled = false;
+            document.getElementById('samprate_SP_HF_label').style.opacity = 1;
+        }
+        else {
+            document.getElementById('samprate_SP_HF').disabled = true;
+            document.getElementById('samprate_SP_HF_label').style.opacity = 0.5;
+        }
+        if ( window.hasLFHF == 'yes') {
+            document.getElementById('samprate_LF+HF').disabled = false;
+            document.getElementById('samprate_LF+HF_label').style.opacity = 1;
+        }
+        else {
+            document.getElementById('samprate_LF+HF').disabled = true;
+            document.getElementById('samprate_LF+HF_label').style.opacity = 0.5;
+        }
+    }
+
+    var plot = document.getElementById("plot");
+    var smprate = document.querySelector('input[name="samprate"]:checked').value;
+    var datatype = document.querySelector('input[name="datatype"]:checked').value;
+    var component = document.querySelector('input[name="component"]:checked').value;
+    
+    var url=`${window.downloadDir}/spectra_${window.eventId}_SampRate_${smprate}_Component_${component}_Data_${datatype}.png`
+    
+    plot.src=url
+}
+</script>
+</body>
+</html> 
+
