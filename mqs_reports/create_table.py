@@ -26,9 +26,11 @@ from sys import stdout as stdout
 
 import obspy
 from obspy import UTCDateTime as utct
+
 from tqdm import tqdm
 
-from fitter import Fitter, plot_spectra
+from fitter import Fitter
+from products import plot_spectra
 
 from mqs_reports.annotations import Annotations
 from mqs_reports.catalog import Catalog
@@ -665,6 +667,10 @@ def define_arguments():
     helptext = 'Data type: RAW, DEGLITCHED, DENOISED'
     parser.add_argument('--data-type', help=helptext, default='RAW')
     
+    helptext = 'Sampling rate (one or more, VBB_LF, SP_HF, LF+HF'
+    parser.add_argument('-s', '--sampling', help=helptext, nargs='+', 
+        default=('VBB_LF', 'SP_HF', 'LF+HF'))
+    
     helptext = 'Orientation (one or more, ZNE, ZRT)'
     parser.add_argument('-o', '--orientation', help=helptext, nargs='+', 
         default=('ZNE', 'ZRT'))
@@ -732,9 +738,10 @@ if __name__ == '__main__':
             normtypes.append(n)
     
     if 'all' in args.plot or 'filterbanks' in args.plot:
-        for smprate in ('VBB_LF', 'SP_HF', 'LF+HF'):
+        
+        for smprate in args.sampling:
             for rotate in (False, True):
-                for normtype in ('none', 'single_components', 'all_components'):
+                for normtype in normtypes:
                     
                     print("Plot filter banks for {} waveforms (smprate {}, "\
                         "norm {}, ZRT {})".format(
@@ -756,7 +763,8 @@ if __name__ == '__main__':
         fitter = Fitter(
             catalog=catalog, inventory=inv, path_sc3dir=args.sc3_dir)
         
-        for smprate in ('VBB_LF', 'SP_HF', 'LF+HF'):
+        # ('VBB_LF', 'SP_HF', 'LF+HF')
+        for smprate in args.sampling:
             for rotate in (False, True):
                 
                 print("Plot spectra for {} waveforms (smprate {}, "\

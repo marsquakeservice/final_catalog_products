@@ -1005,7 +1005,8 @@ class Event:
 
     def calc_spectra(
         self, winlen_sec, detick_nfsamp=0, padding=True, time_windows=None,
-        rotate: bool=False, instrument: str="", smprate: str=""):
+        rotate: bool=False, instrument: str="", smprate: str="",
+        force_products: bool=False):
 
         """
         Add spectra to event object.
@@ -1029,6 +1030,42 @@ class Event:
             raise RuntimeError('waveforms not read in Event object\n' +
                                'Call Event.read_waveforms() first.')
 
+        event_path = pjoin("./events", "{}".format(self.name))
+        spectra_path = pjoin(event_path, 'spectra')
+        
+        # self.wf_type, smprate, orientation
+        orientation = "ZRT" if rotate else "ZNE" 
+        spectra_dict_path = pjoin(
+            spectra_path, "{}_spectra_{}_{}_{}.{}".format(
+                self.name, self.wf_type, smprate, orientation, 
+                PICKLE_EXTENSION))
+        
+        # check if pickled spectra exist
+        if not(force_products) and pexists(spectra_dict_path):
+            
+            print("calc_spectra: reading spectra from {}".format(
+                spectra_dict_path))
+            
+            with io.open(spectra_dict_path, 'rb') as fin:
+                spectra_dict = pickle.load(fin)
+                
+            self.spectra = copy.deepcopy(spectra_dict['VBB'])
+            self.spectra_SP = copy.deepcopy(spectra_dict['SP'])
+            self.amplitudes = copy.deepcopy(spectra_dict['amplitudes'])
+            
+            del spectra_dict
+            
+            if len(self.spectra) == 0:
+                raise RuntimeError(
+                    "calc_spectra: VBB spectra dict has zero length")
+            
+            # print("calc_spectra: read spectra dict from pickle w/ keys: "\
+            #     "{}".format(self.spectra.keys()))
+            
+            self._spectra_available = True
+            
+            return True
+        
         pick_noise_start = self.picks.get('noise_start', None)
         pick_noise_end = self.picks.get('noise_end', None)
         
@@ -1192,6 +1229,7 @@ class Event:
             
             for signal in ['S', 'P', 'all']:
                 amplitudes = None
+                
                 if signal in self.spectra:
                     if self.mars_event_type_short == 'SF' and not rotate:
                         comp = 'p_H'
@@ -1199,10 +1237,12 @@ class Event:
                         comp = 'p_Z'
 
                     p_sig = None
+                    
                     if comp in self.spectra[signal]:
                         p_sig = self.spectra[signal][comp]
                     elif comp in self.spectra_SP[signal]:
                         p_sig = self.spectra_SP[signal][comp]
+                    
                     if p_sig is not None:
                         f_sig = self.spectra[signal]['f']
                     
@@ -1223,20 +1263,14 @@ class Event:
         self._spectra_available = True
 
         # write spectra to JSON files, in event/Sxxxxy/ directory
-        event_path = pjoin("./events", "{}".format(self.name))
-        spectra_path = pjoin(event_path, 'spectra')
-        
-        # self.wf_type, smprate, orientation
-        orientation = "ZRT" if rotate else "ZNE" 
-        spectra_dict_path = pjoin(
-            spectra_path, "{}_spectra_{}_{}_{}.{}".format(
-                self.name, self.wf_type, smprate, orientation, 
-                PICKLE_EXTENSION))
+        print("calc_spectra: writing spectra to {}".format(spectra_dict_path))
         
         makedirs(spectra_path, exist_ok=True)
         
-        spectra_dict = copy.deepcopy(self.spectra)
-        spectra_dict.update(copy.deepcopy(self.spectra_SP))
+        spectra_dict = {}
+        spectra_dict['VBB'] = copy.deepcopy(self.spectra)
+        spectra_dict['SP'] = copy.deepcopy(self.spectra_SP)
+        spectra_dict['amplitudes'] = copy.deepcopy(self.amplitudes)
         
         with io.open(spectra_dict_path, 'wb') as of:
             pickle.dump(spectra_dict, of, pickle.HIGHEST_PROTOCOL)
