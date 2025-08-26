@@ -1819,26 +1819,15 @@ class Event:
                           c='darkgreen', ls='dashed')
 
 
-    def plot_filterbank(self,
-                        fmin: float = 1. / 64,
-                        fmax: float = 4.,
-                        df: float = 2 ** 0.5,
-                        log: bool = False,
-                        waveforms: bool = False,
-                        normwindow: str = 'all',
-                        normtype: str = 'none',
-                        rotate: bool = False,
-                        annotations: Annotations = None,
-                        tmin_plot: float = None,
-                        tmax_plot: float = None,
-                        timemarkers: dict = None,
-                        starttime: obspy.UTCDateTime = None,
-                        endtime: obspy.UTCDateTime = None,
-                        instrument: str = '',
-                        f_VBB_SP_transition = 7.5,
-                        fnam: str = None,
-                        station: str='',
-                        location_code: str=''):
+    def plot_filterbank(
+        self, fmin: float=1.0/64.0, fmax: float=4.0, df: float=2**0.5,
+        log: bool=False, waveforms: bool=False, normwindow: str='all',
+        normtype: str='none', rotate: bool=False, 
+        annotations: Annotations=None, tmin_plot: float=None,
+        tmax_plot: float=None, timemarkers: dict=None,
+        starttime: obspy.UTCDateTime=None, endtime: obspy.UTCDateTime=None,
+        instrument: str="", f_VBB_SP_transition=7.5, fnam: str=None,
+        station: str="", location_code: str=""):
 
         """
         log: plot waveforms in logarithmic scale 

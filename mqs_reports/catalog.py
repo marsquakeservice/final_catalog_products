@@ -1199,8 +1199,8 @@ class Catalog:
         normtype: str='none', rotate: bool=False, smprate: str ="",
         orientation: list=[], norm: list=[], force_products: bool=False):
 
-        print("catalog: available normtypes: {}".format(norm))
-        print("catalog: requested normtypes: {}".format(normtype))
+        # print("catalog: available normtypes: {}".format(norm))
+        # print("catalog: requested normtypes: {}".format(normtype))
         
         if normtype not in norm:
             print("catalog: plot_filterbanks, norm {} not requested".format(
