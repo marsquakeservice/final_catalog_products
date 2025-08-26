@@ -1206,10 +1206,6 @@ class Catalog:
             print("catalog: plot_filterbanks, norm {} not requested".format(
                 normtype))
             return
-            
-        if (not rotate and 'ZNE' not in orientation):
-            print("catalog: plot_filterbanks, ZNE not requested")
-            return 
         
         if (not rotate and 'ZNE' not in orientation):
             print("catalog: plot_filterbanks, ZNE not requested")

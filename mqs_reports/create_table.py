@@ -768,8 +768,7 @@ if __name__ == '__main__':
             for rotate in (False, True):
                 
                 print("Calculate/plot spectra for {} waveforms (smprate {}, "\
-                    "ZRT {})".format(args.data_type, 
-                        smprate, rotate))
+                    "ZRT {})".format(args.data_type, smprate, rotate))
                 
                 # implicitly calls event.calc_spectra()
                 plot_spectra(

@@ -44,6 +44,14 @@ def plot_spectra(
     orientation: list=[], force_products: bool=False, 
     calculate_spectra: bool=False, plot_spectra: bool=True) -> None:
     
+    if (not rotate and 'ZNE' not in orientation):
+        print("products.plot_spectra, ZNE not requested")
+        return 
+        
+    if (rotate and 'ZRT' not in orientation):
+        print("products.plot_spectra, ZRT not requested")
+        return 
+        
     print("products: calculate/plot spectra for {} waveforms (smprate {}, "\
         "ZRT {})".format(wf_type, smprate, rotate))
     
