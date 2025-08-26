@@ -623,11 +623,11 @@ def define_arguments():
     helptext = 'Create HTML overview table and individual event plots'
     parser = ArgumentParser(description=helptext)
 
-    helptext = 'Input QuakeML BED file'
-    parser.add_argument('input_quakeml', help=helptext)
+    helptext = 'Input catalog JSON file'
+    parser.add_argument('input_catalog', help=helptext)
 
     helptext = 'Input annotation file'
-    parser.add_argument('input_csv', help=helptext)
+    parser.add_argument('input_annotations', help=helptext)
 
     helptext = 'Input BAZ JSON file'
     parser.add_argument('input_baz', help=helptext)
@@ -648,21 +648,21 @@ def define_arguments():
     parser.add_argument('-q', '--quality', help=helptext,
                         nargs='+', default=('A', 'B', 'C', 'D'))
 
+    # OBSOLETE
     helptext = 'Distances to use: "all" (default), "aligned", "GUI"'
     parser.add_argument('-d', '--distances', help=helptext,
                         default='all')
 
+    # OBSOLETE
     helptext = 'Magnitude version to use: "Giardini2020" (default), "Boese2021"'
     parser.add_argument('-m', '--mag_version', help=helptext,
                         default='Giardini2020')
 
     helptext = 'Event types'
-    parser.add_argument('-t', '--types', help=helptext,
-                        default='all')
+    parser.add_argument('-t', '--types', help=helptext, default='all')
 
-    helptext = 'Single plot: all, filterbanks, spectral-fit, table'
-    parser.add_argument('-p', '--plot', help=helptext,
-                        default='all')
+    helptext = 'Single plot: filterbanks, spectral-fit'
+    parser.add_argument('-p', '--plot', help=helptext, default='')
 
     helptext = 'Data type: RAW, DEGLITCHED, DENOISED'
     parser.add_argument('--data-type', help=helptext, default='RAW')
@@ -679,9 +679,12 @@ def define_arguments():
     parser.add_argument('-n', '--norm', help=helptext, nargs='+', 
         default=('none', 'single', 'all'))
     
-    helptext = 'force product re-creation'
-    # parser.add_argument('--force-products', help=helptext, default=False)
+    helptext = 'calculate spectra'
+    parser.add_argument('--calc-spectra', action='store_true')
+    parser.add_argument(
+        '--no-calc-spectra', dest='force-products', action='store_false')
     
+    helptext = 'force product re-creation'
     parser.add_argument('--force-products', action='store_true')
     parser.add_argument(
         '--no-force-products', dest='force-products', action='store_false')
@@ -693,33 +696,24 @@ if __name__ == '__main__':
 
     args = define_arguments()
 
+    if not (args.calc_spectra or args.plot in ("filterbanks", "spectral-fit")):
+        print("arguments must either be --calc-spectra or --plot in "\
+            "filterbanks, spectral-fit")
+        sys.exit(1)
+        
     # load GZ BAZ JSON file
     with open(args.input_baz, 'r') as baz_data:
         gz_baz_dict = json.load(baz_data)
         
     catalog = Catalog(
-        fnam_event=args.input_quakeml, type_select=args.types, 
+        fnam_event=args.input_catalog, type_select=args.types, 
         quality=args.quality, baz=gz_baz_dict)
     
     if len(catalog) == 0:
         print("catalog is empty, exiting")
         sys.exit()
 
-    ann = Annotations(fnam_csv=args.input_csv)
-
-    # load manual (aligned) distances
-    # OBSOLETE
-#     if args.distances == 'all':
-#         catalog.load_distances(fnam_csv=args.input_dist)
-#         fnam_out='overview.html'
-#     
-#     elif args.distances == 'GUI':
-#         fnam_out='overview_GUI.html'
-#     
-#     elif args.distances == 'aligned':
-#         catalog.load_distances(fnam_csv=args.input_dist, overwrite=True)
-#         fnam_out='overview_aligned.html'
-
+    ann = Annotations(fnam_csv=args.input_annotations)
     inv = obspy.read_inventory(args.inventory)
     
     with warnings.catch_warnings():
@@ -753,7 +747,13 @@ if __name__ == '__main__':
                         orientation=args.orientation, norm=normtypes,
                         force_products=args.force_products)
 
-    if 'all' in args.plot or 'spectral-fit' in args.plot:
+    if 'all' in args.plot or 'spectral-fit' in args.plot or args.calc_spectra:
+        
+        if 'all' in args.plot or 'spectral-fit' in args.plot:
+            make_plot = True
+        else:
+            make_plot = False
+                    
         with open(args.input_fitparams) as json_data:
             fitting_parameters = json.load(json_data)
             
@@ -767,8 +767,9 @@ if __name__ == '__main__':
         for smprate in args.sampling:
             for rotate in (False, True):
                 
-                print("Plot spectra for {} waveforms (smprate {}, "\
-                    "ZRT {})".format(args.data_type, smprate, rotate))
+                print("Calculate/plot spectra for {} waveforms (smprate {}, "\
+                    "ZRT {})".format(args.data_type, 
+                        smprate, rotate))
                 
                 # implicitly calls event.calc_spectra()
                 plot_spectra(
@@ -777,9 +778,14 @@ if __name__ == '__main__':
                     dir_out='spect', winlen_sec=20.0, wf_type=args.data_type,
                     rotate=rotate, smprate=smprate, 
                     orientation=args.orientation,
-                    force_products=args.force_products)
+                    force_products=args.force_products,
+                    calculate_spectra=args.calc_spectra,
+                    plot_spectra=make_plot)
 
     if 'all' in args.plot or 'table' in args.plot:
+        
+        print("--plot all and table is obsolete, exiting")
+        sys.exit(1)
         
         # HTML table creation is OBSOLETE
         # plot_spectra() calls event.calc_spectra()

@@ -38,29 +38,24 @@ from mqs_reports.utils import add_orientation_to_stream_info
 sns.set_theme(style="darkgrid")
 
 
-def plot_spectra(fitter,
-                 fitting_parameters,
-                 fitting_parameters_defaults,
-                 dir_out: str,
-                 winlen_sec: float,
-                 wf_type : str,
-                 rotate: bool=False,
-                 smprate: str="",
-                 orientation: list=[],
-                 force_products: bool=False) -> None:
+def plot_spectra(
+    fitter, fitting_parameters, fitting_parameters_defaults, dir_out: str,
+    winlen_sec: float, wf_type : str, rotate: bool=False, smprate: str="",
+    orientation: list=[], force_products: bool=False, 
+    calculate_spectra: bool=False, plot_spectra: bool=True) -> None:
     
-    print("fitter: calculate/plot spectra for {} waveforms (smprate {}, "\
+    print("products: calculate/plot spectra for {} waveforms (smprate {}, "\
         "ZRT {})".format(wf_type, smprate, rotate))
     
     for event in tqdm(fitter.catalog, file=sys.stdout):
         
         if event.waveforms_VBB is None:
-            print("fitter: event {}, no VBB waveforms exist, skipping".format(
+            print("products: event {}, no VBB waveforms exist, skipping".format(
                 event.name))
             continue
         
         if rotate and event.baz is None:
-            print("fitter: event {}, rotation to ZRT requested but no BAZ "\
+            print("products: event {}, rotation to ZRT requested but no BAZ "\
                 "exists, skipping".format(event.name))
             continue
         
@@ -140,22 +135,28 @@ def plot_spectra(fitter,
                 'P_spectral_start': p_start, 'P_spectral_end': p_end,
                 'S_spectral_start': s_start, 'S_spectral_end': s_end}
 
-        print("fitter: swap events for event {}, {}/Q{}, wf {}, smprate "\
+        print("products: swap events for event {}, {}/Q{}, wf {}, smprate "\
             "{}, ZRT {}".format(event.name, event.mars_event_type_short, 
                 event.quality, event.wf_type, smprate, rotate))
             
         try:
+            # implicitly calls fitter.calc_spectra()
             fitter.swap_event(
                 event_name=event.name,
                 detick_nfsamp=(10 if wf_type != "DEGLITCHED" else 0),
                 instrument=instrument, rotate=rotate,
                 time_windows=spectral_windows, smprate=smprate, 
-                force_products=force_products)
+                force_products=force_products, 
+                calculate_spectra=calculate_spectra, keep_spectra=plot_spectra)
             
         except Exception as e:
             print(f"Error fitter.swap_event with event {event.name}: {e}")
             continue
 
+        if not plot_spectra:
+            continue
+        
+        # continue only if plot requested
         ev_folder = pjoin(dir_out, fitter.event.name)
 
         if not os.path.exists(ev_folder):
@@ -199,9 +200,7 @@ def plot_spectra(fitter,
             fitting_parameters_pool.set_value(
                 None, 'is_manually_reviewed', False)
 
-        #
         # add missing info for component R and T
-        #
         fitting_parameters_pool.set_value(
             "R",'fminP',fitting_parameters_pool.get_value("Z", 'fminP'))
         fitting_parameters_pool.set_value(
@@ -264,7 +263,7 @@ def plot_spectra(fitter,
             fnam = plot_filename(fitter.event, component)
 
             if pexists(fnam) and not(force_products):
-                print("fitter.plot_spectra: plot file {} exists, "\
+                print("products.plot_spectra: plot file {} exists, "\
                     "skipping".format(fnam))
                 continue
 
@@ -278,7 +277,7 @@ def plot_spectra(fitter,
                     '{fitter.event.name} component {component}: {e}')
                 continue
 
-            print("fitter.plot_spectra: create figure for plot file {}".format(
+            print("products.plot_spectra: create figure for plot file {}".format(
                 fnam))
             
             fig = plt.figure(figsize=(20,12))

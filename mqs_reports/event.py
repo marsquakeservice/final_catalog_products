@@ -1006,7 +1006,8 @@ class Event:
     def calc_spectra(
         self, winlen_sec, detick_nfsamp=0, padding=True, time_windows=None,
         rotate: bool=False, instrument: str="", smprate: str="",
-        force_products: bool=False):
+        force_products: bool=False, calculate_spectra: bool=False, 
+        keep_spectra: bool=False):
 
         """
         Add spectra to event object.
@@ -1041,7 +1042,8 @@ class Event:
                 PICKLE_EXTENSION))
         
         # check if pickled spectra exist
-        if not(force_products) and pexists(spectra_dict_path):
+        if not(calculate_spectra) and keep_spectra and pexists(
+                spectra_dict_path):
             
             print("calc_spectra: reading spectra from {}".format(
                 spectra_dict_path))
@@ -1263,19 +1265,26 @@ class Event:
         self._spectra_available = True
 
         # write spectra to JSON files, in event/Sxxxxy/ directory
-        print("calc_spectra: writing spectra to {}".format(spectra_dict_path))
+        if calculate_spectra:
+            print("calc_spectra: writing spectra to {}".format(spectra_dict_path))
+            
+            makedirs(spectra_path, exist_ok=True)
+            
+            spectra_dict = {}
+            spectra_dict['VBB'] = copy.deepcopy(self.spectra)
+            spectra_dict['SP'] = copy.deepcopy(self.spectra_SP)
+            spectra_dict['amplitudes'] = copy.deepcopy(self.amplitudes)
+            
+            with io.open(spectra_dict_path, 'wb') as of:
+                pickle.dump(spectra_dict, of, pickle.HIGHEST_PROTOCOL)
+                            
+            del spectra_dict
         
-        makedirs(spectra_path, exist_ok=True)
-        
-        spectra_dict = {}
-        spectra_dict['VBB'] = copy.deepcopy(self.spectra)
-        spectra_dict['SP'] = copy.deepcopy(self.spectra_SP)
-        spectra_dict['amplitudes'] = copy.deepcopy(self.amplitudes)
-        
-        with io.open(spectra_dict_path, 'wb') as of:
-            pickle.dump(spectra_dict, of, pickle.HIGHEST_PROTOCOL)
-                        
-        del spectra_dict
+        if not keep_spectra:
+            print("calc_spectra: deleting spectra from memory")
+            self.spectra = None
+            self.spectra_SP = None
+            self.amplitudes = None
         
         
     def pick_amplitude(self,

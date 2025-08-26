@@ -151,7 +151,8 @@ class Fitter:
     
     def swap_event(
         self, event_name, detick_nfsamp, instrument, rotate, time_windows=None,
-        smprate="", force_products=False):
+        smprate="", force_products=False, calculate_spectra=False, 
+        keep_spectra=True):
         """ 
         Change the current event, read its waveforms and calculate spectra 
         
@@ -161,6 +162,13 @@ class Fitter:
             raise ValueError(
                 "event {} is not in the catalog".format(event_name))
         else:
+            
+            # delete waveforms of current event 
+            # if self.event is not None:
+            #     self.event.waveforms_VBB = None 
+            #     self.event.waveforms_SP = None
+            
+            # select new event
             self.event = self.catalog.select(name=event_name).events[0]
             
             # This would reset event.wf_type to RAW
@@ -174,7 +182,8 @@ class Fitter:
             self.event.calc_spectra(
                 winlen_sec=20, detick_nfsamp=detick_nfsamp, 
                 time_windows=time_windows, rotate=rotate, instrument=instrument, 
-                smprate=smprate, force_products=force_products)
+                smprate=smprate, force_products=force_products, 
+                calculate_spectra=calculate_spectra, keep_spectra=keep_spectra)
         
         return self.event
     
