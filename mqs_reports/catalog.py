@@ -1222,21 +1222,22 @@ class Catalog:
                     "skipping".format(event.name))
                 continue
         
-            
-            
             if rotate and event.baz is None:
                 print("catalog: event {}, rotation to ZRT requested but no BAZ "\
                     "exists, skipping".format(event.name))
                 continue
 
-            fmax_LF = 8.
-            fmin_LF = 1. / 32.
-            fmax_HF = 16.
-            fmin_HF = 1. / 2.
-            df_LF = 2. ** 0.5
-            df_HF = 2. ** 0.25
-
+            # set frequency metadata
+            fmax_LF = 8.0
+            fmin_LF = 1.0 / 32.0
+            df_HF = 2.0**0.25
+            
+            fmax_HF = 16.0
+            fmin_HF = 1.0 / 2.0
+            df_LF = 2.0**0.5
+            
             avail_rate = event.available_sampling_rates()
+            
             if smprate == 'VBB_LF':
                 if avail_rate['VBB_Z'] is None or \
                    avail_rate['VBB_N'] is None or \
@@ -1280,10 +1281,11 @@ class Catalog:
 
             # print("ev {}: plotting filterbanks for smprate {}, instrument "\
             #     "{}".format(event.name, smprate, instrument))
-            
-            
         
+            # set pick metadata (only needed for 'phases' zoom level)
             if event.mars_event_type_short in ['LF', 'WB', 'BB']:
+                
+                # LF family
                 if 'S' in event.picks and 'P' in event.picks and \
                         len(event.picks['S']) * len(event.picks['P']) > 0:
                     t_S = utct(event.picks['S'])
@@ -1293,6 +1295,8 @@ class Catalog:
                     t_S = None
             
             elif event.mars_event_type_short in ['HF', '24', 'VF']:
+                
+                # HF family
                 
                 # TODO(fab): are Pg and Sg still being used? 
                 if 'Sg' in event.picks and 'Pg' in event.picks and \
@@ -1309,10 +1313,12 @@ class Catalog:
                     t_P = utct(event.starttime)
                     t_S = None
             
-            else: # Super High Frequency
+            else: 
+                # Super High Frequency
                 t_P = utct(event.starttime)
                 t_S = None
 
+            # TODO(fab): move into plot function
             ev_folder = pjoin(dir_out, event.name)
 
             if not os.path.exists(ev_folder):

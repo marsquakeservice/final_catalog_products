@@ -1898,6 +1898,7 @@ class Event:
             plt.close()
             return None
         
+        # select from waveforms
         if instrument == 'VBB':
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
@@ -1936,7 +1937,6 @@ class Event:
             raise ValueError(f'Invalid value for instrument: {instrument}')
 
         if rotate:
-
             st_HF.rotate('NE->RT', back_azimuth=self.baz)
             st_LF.rotate('NE->RT', back_azimuth=self.baz)
 
@@ -2008,6 +2008,7 @@ class Event:
         xvec_env = []
         xvec = []
         
+        # 1st loop over frequencies to filter, rotate, and get norm factors
         for ifreq, fcenter in enumerate(freqs):
 
             f0 = fcenter / df
@@ -2107,6 +2108,7 @@ class Event:
                     offset_tr[trid] = offset
 
         # print("2nd freq loop")
+        # 2nd loop over frequencies to plot traces
         for ifreq, fcenter in enumerate(freqs):
 
             if ifreq not in freqs_data:
@@ -2126,6 +2128,7 @@ class Event:
             xvec_env = tr_Z_env.times() + t_offset
             xvec = tr_Z.times() + t_offset
 
+            # three orientation subplots
             for itr, trid in enumerate(trids):
 
                 maxfac = None
@@ -2239,11 +2242,13 @@ class Event:
         np.set_printoptions(precision=3)
         ticklabels = []
         
+        # set ticklabels per freq bin
         for freq in freqs:
             if freq > 1:
                 ticklabels.append(f'{freq:.1f}')
             else:
                 ticklabels.append(f'1/{1. / freq:.1f}')
+                
         ax[0].set_yticklabels(ticklabels)
         
         for a in ax:
@@ -2267,7 +2272,6 @@ class Event:
         ax[0].set_title('vertical (Z)', fontsize='medium')
 
         if rotate:
-
             ax[1].set_title('radial (R)', fontsize='medium')
             ax[2].set_title('transverse (T)', fontsize='medium')
         else:

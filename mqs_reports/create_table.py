@@ -731,6 +731,7 @@ if __name__ == '__main__':
         else:
             normtypes.append(n)
     
+    # filterbanks
     if 'all' in args.plot or 'filterbanks' in args.plot:
         
         for smprate in args.sampling:
@@ -747,6 +748,7 @@ if __name__ == '__main__':
                         orientation=args.orientation, norm=normtypes,
                         force_products=args.force_products)
 
+    # spectra
     if 'all' in args.plot or 'spectral-fit' in args.plot or args.calc_spectra:
         
         if 'all' in args.plot or 'spectral-fit' in args.plot:
@@ -781,6 +783,8 @@ if __name__ == '__main__':
                     calculate_spectra=args.calc_spectra,
                     plot_spectra=make_plot)
 
+    print("create_table: processing has ended")
+    
     if 'all' in args.plot or 'table' in args.plot:
         
         print("--plot all and table is obsolete, exiting")

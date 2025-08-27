@@ -328,7 +328,9 @@ def plot_spectra(
             fig.savefig(fnam)
             plt.close(fig)
 
-
+    print("products.plot_spectra: processing has ended")
+    
+    
 def _plot_spectra_top(fitter, ax, tr, component, windows, fitting_parameters):
 
     #if parameters.filter_apply:
