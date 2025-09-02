@@ -40,8 +40,10 @@ from scipy import stats
 from tqdm import tqdm
 
 from mqs_reports.annotations import Annotations
+
 from mqs_reports.event import Event, EVENT_TYPES_PRINT, EVENT_TYPES_SHORT, \
     EVENT_TYPES, RADIUS_MARS, CRUST_VS, CRUST_VP
+
 from mqs_reports.magnitudes import lorentz_att
 from mqs_reports.scatter_annot import scatter_annot
 from mqs_reports.snr import calc_stalta
@@ -57,7 +59,7 @@ from singlestationlocator import configuration
         
 
 PHASE_LIST = [
-    'start', 'end', 'P', 'S',  'PP', 'SS',  'Pg', 'Sg', 'Peak_M2.4',
+    'start', 'end', 'P', 'S',  'P1', 'S1', 'PP', 'SS',  'Pg', 'Sg', 'Peak_M2.4',
     'Peak_MbP', 'Peak_MbS', 'x1', 'x2', 'x3', 'noise_start', 'noise_end',
     'P_spectral_start', 'P_spectral_end', 'S_spectral_start', 'S_spectral_end',
     'R1', 'G1']
@@ -1192,220 +1194,6 @@ class Catalog:
 
         for event_name, fnam in result_list_tqdm:
             self.select(name=event_name).events[0].fnam_report = fnam
-
-
-    def plot_filterbanks(
-        self, dir_out: str='filterbanks', annotations: Annotations=None,
-        normtype: str='none', rotate: bool=False, smprate: str ="",
-        orientation: list=[], norm: list=[], force_products: bool=False):
-
-        # print("catalog: available normtypes: {}".format(norm))
-        # print("catalog: requested normtypes: {}".format(normtype))
-        
-        if normtype not in norm:
-            print("catalog: plot_filterbanks, norm {} not requested".format(
-                normtype))
-            return
-        
-        if (not rotate and 'ZNE' not in orientation):
-            print("catalog: plot_filterbanks, ZNE not requested")
-            return 
-        
-        if (rotate and 'ZRT' not in orientation):
-            print("catalog: plot_filterbanks, ZRT not requested")
-            return 
-        
-        for event in tqdm(self, file=stdout):
-
-            if event.waveforms_VBB is None:
-                print("catalog: event {}, no VBB waveforms exist, "\
-                    "skipping".format(event.name))
-                continue
-        
-            if rotate and event.baz is None:
-                print("catalog: event {}, rotation to ZRT requested but no BAZ "\
-                    "exists, skipping".format(event.name))
-                continue
-
-            # set frequency metadata
-            fmax_LF = 8.0
-            fmin_LF = 1.0 / 32.0
-            df_HF = 2.0**0.25
-            
-            fmax_HF = 16.0
-            fmin_HF = 1.0 / 2.0
-            df_LF = 2.0**0.5
-            
-            avail_rate = event.available_sampling_rates()
-            
-            if smprate == 'VBB_LF':
-                if avail_rate['VBB_Z'] is None or \
-                   avail_rate['VBB_N'] is None or \
-                   avail_rate['VBB_E'] is None:
-                    continue
-                instrument = 'VBB'
-                fmin = fmin_LF
-                fmax = fmax_LF
-                df = df_LF
-            
-            elif smprate == 'SP_HF':
-                if avail_rate['SP_Z'] != 100. or \
-                   avail_rate['SP_N'] != 100. or \
-                   avail_rate['SP_E'] != 100.:
-                    continue
-                instrument = 'SP'
-                fmin = fmin_HF
-                fmax = fmax_HF
-                df = df_HF
-            
-            elif smprate == 'LF+HF':
-                if avail_rate['VBB100_Z'] == 100. and \
-                   avail_rate['VBB100_N'] == 100. and \
-                   avail_rate['VBB100_E'] == 100.:
-                    instrument = 'VBB+VBB100'
-                
-                elif avail_rate['SP_Z'] == 100. and \
-                     avail_rate['SP_N'] == 100. and \
-                     avail_rate['SP_E'] == 100.:
-                    instrument = 'VBB+SP'
-                
-                else:
-                    continue
-                
-                fmin = fmin_LF
-                fmax = fmax_HF
-                df = df_HF
-            
-            else:
-                raise ValueError(f'Invalid value for smprate: {smprate}')
-
-            # print("ev {}: plotting filterbanks for smprate {}, instrument "\
-            #     "{}".format(event.name, smprate, instrument))
-        
-            # set pick metadata (only needed for 'phases' zoom level)
-            if event.mars_event_type_short in ['LF', 'WB', 'BB']:
-                
-                # LF family
-                if 'S' in event.picks and 'P' in event.picks and \
-                        len(event.picks['S']) * len(event.picks['P']) > 0:
-                    t_S = utct(event.picks['S'])
-                    t_P = utct(event.picks['P'])
-                else:
-                    t_P = utct(event.starttime)
-                    t_S = None
-            
-            elif event.mars_event_type_short in ['HF', '24', 'VF']:
-                
-                # HF family
-                
-                # TODO(fab): are Pg and Sg still being used? 
-                if 'Sg' in event.picks and 'Pg' in event.picks and \
-                        len(event.picks['Sg']) * len(event.picks['Pg']) > 0:
-                    t_S = utct(event.picks['Sg'])
-                    t_P = utct(event.picks['Pg'])
-                    
-                elif 'S' in event.picks and 'P' in event.picks and \
-                        len(event.picks['S']) * len(event.picks['P']) > 0:
-                    t_S = utct(event.picks['S'])
-                    t_P = utct(event.picks['P'])
-                    
-                else:
-                    t_P = utct(event.starttime)
-                    t_S = None
-            
-            else: 
-                # Super High Frequency
-                t_P = utct(event.starttime)
-                t_S = None
-
-            # TODO(fab): move into plot function
-            ev_folder = pjoin(dir_out, event.name)
-
-            if not os.path.exists(ev_folder):
-                os.makedirs(ev_folder)
-
-            def plot_filename(ev, zoom):
-                rot = 'ZRT' if rotate else 'ZNE'
-                return pjoin(
-                    ev_folder,
-                    "filterbank_{}_Zoom_{}_SampRate_{}_Norm_{}_Rotation_{}_"\
-                    "Data_{}.png".format(
-                        ev.name, zoom, smprate, normtype, rot, ev.wf_type))
-
-            fnam = plot_filename(event, 'out')
-
-            hasdata = False
-            
-            if not pexists(fnam) or force_products:
-                
-                try:
-                    print("catalog: plot filterbanks for event {}, {}/Q{}, "\
-                        "wf {}, smprate {}, ZRT {}, norm {}".format(
-                        event.name, event.mars_event_type_short, event.quality, 
-                        event.wf_type, smprate, rotate, normtype))
-            
-                    event.plot_filterbank(
-                        normwindow='all', annotations=annotations,
-                        starttime=event.starttime - 300.0,
-                        endtime=event.endtime + 300.0,
-                        instrument=instrument,
-                        fnam=fnam, fmin=fmin, fmax=fmax, df=df,
-                        normtype=normtype, rotate=rotate)
-                
-                except (AttributeError, IndexError) as err:
-                    print( f"Exception in filterbank for event "\
-                        "{event.name}: {err}")
-                
-                else:
-                    hasdata = True
-
-            if event.quality in ['A', 'B', 'C'] and hasdata:
-                
-                fnam = plot_filename(event, 'in')
-                try:
-                    if not pexists(fnam) or force_products:
-                        
-                        # TODO(fab): use event.plot_parameters['filterbanks']['t_P']
-                        print("catalog: plot filterbanks for event {}, {}/Q{}, "\
-                            "wf {}, smprate {}, ZRT {}, norm {}".format(
-                            event.name, event.mars_event_type_short, event.quality, 
-                            event.wf_type, smprate, rotate, normtype))
-                    
-                        event.plot_filterbank(starttime=t_P - 300.,
-                                              endtime=t_P + 1100.,
-                                              normwindow='S',
-                                              annotations=annotations,
-                                              tmin_plot=-240., tmax_plot=900.,
-                                              fnam=fnam,
-                                              instrument=instrument,
-                                              fmin=fmin, fmax=fmax, df=df,
-                                              normtype=normtype, rotate=rotate)
-
-                    if t_S is not None:
-                        fnam = plot_filename(event, 'phases')
-                        if not pexists(fnam) or force_products:
-                            print("catalog: plot filterbanks for event {}, {}/Q{}, "\
-                                "wf {}, smprate {}, ZRT {}, norm {}".format(
-                                event.name, event.mars_event_type_short, event.quality, 
-                                event.wf_type, smprate, rotate, normtype))
-                    
-                            event.plot_filterbank(starttime=t_P - 120.,
-                                                  endtime=t_S + 240.,
-                                                  normwindow='S',
-                                                  annotations=annotations,
-                                                  tmin_plot=-50.,
-                                                  tmax_plot=t_S - t_P + 200.,
-                                                  fnam=fnam,
-                                                  instrument=instrument,
-                                                  fmin=fmin, fmax=fmax, df=df,
-                                                  normtype=normtype, rotate=rotate)
-                
-                except (IndexError, AttributeError) as err:
-                    print(f"Exception in filterbank for event "\
-                        "{event.name}: {err}")
-                    
-            plt.close()
-
 
 
     def plot_spectra_unused(

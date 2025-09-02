@@ -30,7 +30,7 @@ from obspy import UTCDateTime as utct
 from tqdm import tqdm
 
 from fitter import Fitter
-from products import plot_spectra
+from products import plot_filterbanks, plot_spectra
 
 from mqs_reports.annotations import Annotations
 from mqs_reports.catalog import Catalog
@@ -742,9 +742,10 @@ if __name__ == '__main__':
                         "norm {}, ZRT {})".format(
                             args.data_type, smprate, normtype, rotate))
                     
-                    catalog.plot_filterbanks(
-                        dir_out='filterbanks', annotations=ann, 
-                        normtype=normtype, rotate=rotate, smprate=smprate,
+                    plot_filterbanks(
+                        catalog, dir_out='filterbanks', annotations=ann, 
+                        wf_type=args.data_type, normtype=normtype, 
+                        rotate=rotate, smprate=smprate,
                         orientation=args.orientation, norm=normtypes,
                         force_products=args.force_products)
 
