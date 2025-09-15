@@ -30,3 +30,6 @@ with open(path.join(mydir, 'data/magnitude_exceptions.json'), 'r') as jsonfile:
 # Seconds per day and Sol
 SEC_PER_DAY_EARTH = 86400
 SEC_PER_DAY_MARS = 88775.2440
+
+PICKLE_EXTENSION = "pickle"
+

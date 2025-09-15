@@ -51,8 +51,11 @@ import scipy.signal as signal
 import mqs_reports.polarisation_analysis as pa
 
 from mqs_reports.annotations import Annotations
+
 from mqs_reports.constants import mag_exceptions as mag_exc
 from mqs_reports.constants import magnitude as mag_const
+from mqs_reports.constants import PICKLE_EXTENSION
+
 from mqs_reports.magnitudes import fit_spectra, calc_magnitude
 from mqs_reports.report import make_report
 
@@ -111,8 +114,6 @@ FILTERBANK_CORNERS_COUNT = 8
 FILTERBANK_PLOT_SCALE_FACTOR = 4
 
 PICK_METHOD_ALIGNED = 'aligned'
-
-PICKLE_EXTENSION = "pickle"
 
 
 class Event:
@@ -236,6 +237,7 @@ class Event:
 
         self._waveforms_read = False
         self._spectra_available = False
+        self._filterbanks_available = False
 
         # Define Instance attributes
         self.waveforms_VBB = None
@@ -243,6 +245,8 @@ class Event:
         self.kind = None
         self.spectra = None
         self.spectra_SP = None
+        
+        self.filterbank_data = None
 
         self.plot_parameters = dict()
         
@@ -1264,7 +1268,7 @@ class Event:
 
         self._spectra_available = True
 
-        # write spectra to JSON files, in event/Sxxxxy/ directory
+        # write spectra to pickle files, in event/Sxxxxy/ directory
         if calculate_spectra:
             print("calc_spectra: writing spectra to {}".format(spectra_dict_path))
             
@@ -2196,6 +2200,9 @@ class Event:
 #                             ifreq + waveform_tr[itr][ifreq].data / max_maxfac,
 #                             c='C%d' % (ifreq % 10),
 #                             lw=0.5, zorder=50 - ifreq)
+        
+        
+        # products.filter_traces() ends here 
         
         # external time markers
         # print("plot time markers")

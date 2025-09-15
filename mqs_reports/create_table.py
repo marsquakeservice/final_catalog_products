@@ -682,7 +682,12 @@ def define_arguments():
     helptext = 'calculate spectra'
     parser.add_argument('--calc-spectra', action='store_true')
     parser.add_argument(
-        '--no-calc-spectra', dest='force-products', action='store_false')
+        '--no-calc-spectra', dest='calc-spectra', action='store_false')
+    
+    helptext = 'calculate filterbanks'
+    parser.add_argument('--calc-filterbanks', action='store_true')
+    parser.add_argument(
+        '--no-calc-filterbanks', dest='calc-filterbanks', action='store_false')
     
     helptext = 'force product re-creation'
     parser.add_argument('--force-products', action='store_true')
@@ -696,7 +701,8 @@ if __name__ == '__main__':
 
     args = define_arguments()
 
-    if not (args.calc_spectra or args.plot in ("filterbanks", "spectral-fit")):
+    if not (args.calc_spectra or args.calc_filterbanks or args.plot in (
+            "filterbanks", "spectral-fit")):
         print("arguments must either be --calc-spectra or --plot in "\
             "filterbanks, spectral-fit")
         sys.exit(1)
@@ -732,8 +738,13 @@ if __name__ == '__main__':
             normtypes.append(n)
     
     # filterbanks
-    if 'all' in args.plot or 'filterbanks' in args.plot:
+    if 'all' in args.plot or 'filterbanks' in args.plot or args.calc_filterbanks:
         
+        if 'all' in args.plot or 'filterbanks' in args.plot:
+            make_plot = True
+        else:
+            make_plot = False
+            
         for smprate in args.sampling:
             for rotate in (False, True):
                 for normtype in normtypes:
@@ -747,7 +758,9 @@ if __name__ == '__main__':
                         wf_type=args.data_type, normtype=normtype, 
                         rotate=rotate, smprate=smprate,
                         orientation=args.orientation, norm=normtypes,
-                        force_products=args.force_products)
+                        force_products=args.force_products,
+                        calculate_filterbanks=args.calc_filterbanks,
+                        plot_filterbanks=make_plot)
 
     # spectra
     if 'all' in args.plot or 'spectral-fit' in args.plot or args.calc_spectra:

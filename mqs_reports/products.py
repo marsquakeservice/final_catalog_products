@@ -15,10 +15,16 @@ Marsquake service Mars event catalogue
 """
 
 import copy
+import io
 import os.path
+import pickle
 import sys
+import warnings
 
+from os import makedirs
 from os.path import exists as pexists, join as pjoin
+
+from sys import stdout as stdout
 
 import seaborn as sns
 
@@ -28,13 +34,20 @@ import matplotlib.patches as patches
 import numpy as np
 
 from obspy import UTCDateTime
+from obspy import UTCDateTime as utct 
 
 from tqdm import tqdm
 
 from fittingparam import FittingParameterPool
 
 from mqs_reports.annotations import Annotations
+from mqs_reports.constants import PICKLE_EXTENSION
+from mqs_reports.event import ENVELOPE_CORNERS_COUNT, \
+    FILTERBANK_CORNERS_COUNT, FILTERBANK_PLOT_SCALE_FACTOR, PICK_METHOD_ALIGNED
+
 from mqs_reports.utils import add_orientation_to_stream_info
+from mqs_reports.utils import envelope_smooth
+from mqs_reports.utils import uncertainty_from_pdf
 
 sns.set_theme(style="darkgrid")
 
@@ -725,32 +738,34 @@ def plot_filterbanks(
             t_S = None
 
         print("plot_filterbanks: filter traces for event {}, {}/Q{}, wf {}, "\
-            "smprate {}, ZRT {}".format(event.name, event.mars_event_type_short, 
-                event.quality, event.wf_type, smprate, rotate))
+            "smprate {}, ZRT {}, instrument {}".format(event.name, 
+                event.mars_event_type_short, event.quality, event.wf_type, 
+                smprate, rotate, instrument))
             
         try:
             
-            filter_traces(event, 
-                fmin: float=1.0/64.0, fmax: float=4.0, df: float=2**0.5,
-                log: bool=False, waveforms: bool=False, normwindow: str='all',
-                normtype: str='none', rotate: bool=False, 
-                annotations: Annotations=None, tmin_plot: float=None,
-                tmax_plot: float=None, timemarkers: dict=None,
-                starttime: obspy.UTCDateTime=None, endtime: obspy.UTCDateTime=None,
-                instrument: str="", f_VBB_SP_transition=7.5, fnam: str=None,
-                station: str="", location_code: str="",
-                force_products=force_products, 
-                calculate_filterbanks=calculate_filterbanks, keep_filterbanks=plot_filterbanks)
+            # log, waveforms, normwindow (annotations)
+            # tmin_plot, tmax_plot, timemarkers, starttime, endtime (instrument)
+            # f_VBB_SP_transition, fnam, station, location_code (wf_type)
+            filter_traces(
+                event, fmin, fmax, df, 
+                annotations=annotations, instrument=instrument, 
+                wf_type=wf_type, normtype=normtype, rotate=rotate, 
+                smprate=smprate, force_products=force_products, 
+                calculate_filterbanks=calculate_filterbanks, 
+                keep_filterbanks=plot_filterbanks)
             
             
+            # not needed here!
             # implicitly calls fitter.calc_spectra()
-            fitter.swap_event(
-                event_name=event.name,
-                detick_nfsamp=(10 if wf_type != "DEGLITCHED" else 0),
-                instrument=instrument, rotate=rotate,
-                time_windows=spectral_windows, smprate=smprate, 
-                force_products=force_products, 
-                calculate_filterbanks=calculate_filterbanks, keep_filterbanks=plot_filterbanks)
+            # fitter.swap_event(
+            #     event_name=event.name,
+            #     detick_nfsamp=(10 if wf_type != "DEGLITCHED" else 0),
+            #     instrument=instrument, rotate=rotate,
+            #     time_windows=spectral_windows, smprate=smprate, 
+            #     force_products=force_products, 
+            #     calculate_filterbanks=calculate_filterbanks, 
+            #     keep_filterbanks=plot_filterbanks)
             
         except Exception as e:
             print(f"Error products.filter_traces with event {event.name}: {e}")
@@ -760,7 +775,8 @@ def plot_filterbanks(
             continue
         
         
-        # from here on plotting
+        ## FROM HERE ON IT IS PLOTTING
+        
         # TODO(fab): move into plot function
         ev_folder = pjoin(dir_out, event.name)
 
@@ -854,21 +870,73 @@ def filter_traces(
     event, 
     fmin: float=1.0/64.0, fmax: float=4.0, df: float=2**0.5,
     log: bool=False, waveforms: bool=False, normwindow: str='all',
-    normtype: str='none', rotate: bool=False, 
     annotations: Annotations=None, tmin_plot: float=None,
     tmax_plot: float=None, timemarkers: dict=None,
-    starttime: obspy.UTCDateTime=None, endtime: obspy.UTCDateTime=None,
+    starttime: UTCDateTime=None, endtime: UTCDateTime=None,
     instrument: str="", f_VBB_SP_transition=7.5, fnam: str=None,
-    station: str="", location_code: str="", force_products: bool=False, 
-    calculate_filterbanks: bool=False, plot_filterbanks: bool=True):
+    station: str="", location_code: str="", 
+    wf_type="RAW", normtype="none", rotate=False, smprate ="", 
+    force_products: bool=False, calculate_filterbanks: bool=False, 
+    keep_filterbanks: bool=True):
 
     """
     
     """
 
+    # from spectra, to be updated
+    if not event._waveforms_read:
+        raise RuntimeError('waveforms not read in Event object\n' +
+                            'Call Event.read_waveforms() first.')
+
+    event_path = pjoin("./events", "{}".format(event.name))
+    filterbanks_path = pjoin(event_path, 'filterbanks')
+    
+    # event.wf_type, smprate, orientation, normtype
+    orientation = "ZRT" if rotate else "ZNE" 
+    
+    # zoom parameters not needed for pickle
+    filterbanks_dict_path = pjoin(
+        filterbanks_path, "{}_filterbanks_{}_{}_{}_{}.{}".format(
+            event.name, smprate, normtype, orientation, wf_type,
+            PICKLE_EXTENSION))
+    
+    # check if pickled spectra exist
+    if not(calculate_filterbanks) and keep_filterbanks and pexists(
+            filterbanks_dict_path):
+        
+        print("filter_traces: reading filterbanks from {}".format(
+            filterbanks_dict_path))
+        
+        with io.open(filterbanks_dict_path, 'rb') as fin:
+            filterbanks_dict = pickle.load(fin)
+            
+        event.filterbank_data = copy.deepcopy(filterbanks_dict['filterbanks'])
+        
+        del filterbanks_dict
+        
+        if len(event.filterbank_data) == 0:
+            raise RuntimeError(
+                "filter_traces: filterbanks dict has zero length")
+        
+        # print("calc_spectra: read spectra dict from pickle w/ keys: "\
+        #     "{}".format(self.spectra.keys()))
+        
+        event._filterbanks_available = True
+        
+        return True
+    
+    event.filterbank_data = dict()
+    
     # Determine frequencies
+    event.filterbank_data['fmin'] = fmin
+    event.filterbank_data['fmax'] = fmax
+    event.filterbank_data['df'] = df
+    
     nfreqs = int(np.round(np.log(fmax / fmin) / np.log(df), decimals=0) + 1)
     freqs = np.geomspace(fmin, fmax + 0.001, nfreqs)
+    
+    event.filterbank_data['nfreqs'] = nfreqs
+    event.filterbank_data['freqs'] = freqs
     
     # print("nfreqs: {}, min freq: {}, max freq: {}".format(
     #     nfreqs, freqs[0], freqs[-1]))
@@ -893,10 +961,8 @@ def filter_traces(
         t_ref = event.starttime
         t_ref_type = 'start time'
     
-    if event.waveforms_VBB is None:
-        print("plot_filterbank: no VBB waveform, closing plot")
-        plt.close()
-        return None
+    event.filterbank_data['t_ref'] = t_ref
+    event.filterbank_data['t_ref_type'] = t_ref_type
     
     # select from waveforms
     if instrument == 'VBB':
@@ -940,6 +1006,10 @@ def filter_traces(
         st_HF.rotate('NE->RT', back_azimuth=event.baz)
         st_LF.rotate('NE->RT', back_azimuth=event.baz)
 
+    event.filterbank_data['instrument'] = instrument
+    event.filterbank_data['st_LF_desc'] = st_LF_desc
+    event.filterbank_data['st_HF_desc'] = st_HF_desc
+        
     tstart_norm = dict(
         P=event.picks.get('P_spectral_start', None), 
         S=event.picks.get('S_spectral_start', None), all=event.starttime)
@@ -970,27 +1040,44 @@ def filter_traces(
         tstart_norm = utct(tstart_norm[normwindow])
         tend_norm = utct(tend_norm[normwindow])
 
+    event.filterbank_data['normwindow'] = normwindow
+    
+    event.filterbank_data['tstart_norm'] = tstart_norm
+    event.filterbank_data['tend_norm'] = tend_norm
+    
     if starttime is None:
-        starttime = event.starttime - 100.
+        starttime = event.starttime - 100.0
     if endtime is None:
-        endtime = event.endtime + 100.
+        endtime = event.endtime + 100.0
+        
     if tmin_plot is None:
         tmin_plot = starttime - t_ref
     if tmax_plot is None:
         tmax_plot = endtime - t_ref
+    
+    event.filterbank_data['starttime'] = starttime
+    event.filterbank_data['endtime'] = endtime
+    
+    event.filterbank_data['tmin_plot'] = tmin_plot
+    event.filterbank_data['tmax_plot'] = tmax_plot
     
     # print("t_ref: {}, starttime: {}, endtime: {}".format(
     #     t_ref, starttime, endtime))
     
     for st in (st_HF, st_LF):
         st.trim(
-            starttime=utct(starttime) - 1.0/fmin,
-            endtime=utct(endtime) + 1.0/fmin)
+            starttime=utct(starttime) - 1.0 / fmin,
+            endtime=utct(endtime) + 1.0 / fmin)
 
+    event.filterbank_data['st_LF'] = st_LF
+    event.filterbank_data['st_HF'] = st_HF
+    
+    # compute normalization factors
     maxfac_all = None
     offset_all = None
     maxfac_tr = {}
     offset_tr = {}
+    
     trids = ('Z','2','3')
     
     for trid in trids:
@@ -1153,26 +1240,65 @@ def filter_traces(
             #                      y1=iangle + tr_Z_env.data / maxfac,
             #                      y2=iangle, color='darkgrey')
 
-            if log:
-                ax[itr].plot(xvec_env,
-                                ifreq + np.log(tr_env.data / maxfac) / 3,
-                                lw=1.0, zorder=50)
-            else:
+            # if log:
+            #     ax[itr].plot(xvec_env,
+            #                     ifreq + np.log(tr_env.data / maxfac) / 3,
+            #                     lw=1.0, zorder=50)
+            # else:
+            # 
+            #     if waveforms:
+            #         color = 'k'
+            #     else:
+            #         color = 'C%d' % (ifreq % 10)
+            # 
+            # 
+            #     ax[itr].plot(xvec_env,
+            #                     ifreq + (tr_env.data - offset) / maxfac,
+            #                     c=color,
+            #                     lw=0.5, zorder=80)
+            #     if waveforms:
+            #         ax[itr].plot(xvec,
+            #                         ifreq + tr.data / maxfac,
+            #                         c='C%d' % (ifreq % 10),
+            #                         lw=0.5, zorder=50 - ifreq)
 
-                if waveforms:
-                    color = 'k'
-                else:
-                    color = 'C%d' % (ifreq % 10)
+                    # plot envelopes
+#                     ax[itr].plot(
+#                         xvec_env[ifreq],
+#                         ifreq + \
+#                             (envelopes[itr][ifreq].data - offset) / max_maxfac,
+#                         c=color, lw=0.5, zorder=80)
+#                     
+#                     if waveforms:
+#                         # plot waveforms
+#                         ax[itr].plot(
+#                             xvec[ifreq],
+#                             ifreq + waveform_tr[itr][ifreq].data / max_maxfac,
+#                             c='C%d' % (ifreq % 10),
+#                             lw=0.5, zorder=50 - ifreq)
 
+    event.filterbank_data['freqs_data'] = freqs_data
 
-                ax[itr].plot(xvec_env,
-                                ifreq + (tr_env.data - offset) / maxfac,
-                                c=color,
-                                lw=0.5, zorder=80)
-                if waveforms:
-                    ax[itr].plot(xvec,
-                                    ifreq + tr.data / maxfac,
-                                    c='C%d' % (ifreq % 10),
-                                    lw=0.5, zorder=50 - ifreq)
+    event.filterbank_data['xvec_env'] = xvec_env
+    event.filterbank_data['xvec'] = xvec
+    
+    event._filterbanks_available = True
 
-
+    # write filterbanks to pickle files, in event/Sxxxxy/ directory
+    if calculate_filterbanks:
+        print("filter_traces: writing filterbanks to {}".format(
+            filterbanks_dict_path))
+        
+        makedirs(filterbanks_path, exist_ok=True)
+        
+        filterbanks_dict = {}
+        filterbanks_dict['filterbanks'] = copy.deepcopy(event.filterbank_data)
+        
+        with io.open(filterbanks_dict_path, 'wb') as of:
+            pickle.dump(filterbanks_dict, of, pickle.HIGHEST_PROTOCOL)
+                        
+        del filterbanks_dict
+    
+    if not keep_filterbanks:
+        print("filter_traces: deleting filterbanks from memory")
+        event.filterbank_data = None
