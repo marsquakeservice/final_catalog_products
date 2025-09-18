@@ -1,0 +1,9 @@
+table#classification {
+  border: 1px solid black;
+}
+
+table.class th, table.class td {
+  border: 1px solid black;
+  padding: 0.5rem;
+  text-align: right;
+}
