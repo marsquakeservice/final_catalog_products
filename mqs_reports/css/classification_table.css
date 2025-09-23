@@ -25,3 +25,7 @@ table#classification tr.tbl-classi-tr-total {
 table#classification tr.tbl-classi-tr-type {
   background-color: #EEEEEE;
 }
+
+table#classification tr.tbl-classi-tr-type-dl {
+  background-color: #FFFFFF;
+}
