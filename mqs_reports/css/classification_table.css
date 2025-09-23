@@ -1,9 +1,27 @@
 table#classification {
-  border: 1px solid black;
+  margin-left: 0;
+  table-layout: fixed;
+  border-collapse: collapse;
+  
+  border-top: 1px solid #999999;
+  border-bottom: 1px solid #999999;
 }
 
-table.class th, table.class td {
-  border: 1px solid black;
-  padding: 0.5rem;
+table#classification th, table#classification td {
+  padding: 0.1em 0.5em;
   text-align: right;
+}
+
+
+table#classification tr.tbl-classi-tr-title {
+  background-color: #AAAAAA;
+}
+
+table#classification tr.tbl-classi-tr-total {
+  background-color: #CCCCCC;
+}
+
+
+table#classification tr.tbl-classi-tr-type {
+  background-color: #EEEEEE;
 }
