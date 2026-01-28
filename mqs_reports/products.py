@@ -51,6 +51,64 @@ from mqs_reports.utils import uncertainty_from_pdf
 
 sns.set_theme(style="darkgrid")
 
+# original seaborn color_palette() used in older versions
+# index 0 blue, 1 orange, 2 green, 3 dark red, 7 darkgray, 9 turquoise
+
+# Paolo Veronese green
+COLOR_SPECTRA_FILTERED_TRACE = "#009b7d"
+
+# old silver (grey), darker than silver chalice
+COLOR_SPECTRA_NOISE = "#848482"
+
+# silver chalice (grey), lighter than old silver
+COLOR_SPECTRA_NOISE_HIGH_SPS = "#acacac"
+
+COLOR_SPECTRA_P_PHASE = "red"
+COLOR_SPECTRA_S_PHASE = "blue"
+
+# chartreuse
+COLOR_SPECTRA_MANUAL_FIT = "#7fff00"
+
+# sinopia (orange), darker than coral
+COLOR_SPECTRA_PHASE_P_LF = "#cb410b"
+
+# coral (orange), lighter than sinopia
+COLOR_SPECTRA_PHASE_P_HIGH_SPS = "#ff7f50"
+
+# new car (blue), darker than medium sky blue
+COLOR_SPECTRA_PHASE_S_LF = "#214fc6"
+
+# medium sky blue (blue), lighter than new car
+COLOR_SPECTRA_PHASE_S_HIGH_SPS = "#80daeb"
+
+COLOR_SPECTRA_DICT = {
+    "phase_p_lf": COLOR_SPECTRA_PHASE_P_LF, 
+    "phase_s_lf": COLOR_SPECTRA_PHASE_S_LF, 
+    "manual_fit": COLOR_SPECTRA_MANUAL_FIT, 
+    "phase_s": COLOR_SPECTRA_S_PHASE, 
+    "phase_p_high_sps": COLOR_SPECTRA_PHASE_P_HIGH_SPS,
+    "phase_s_high_sps": COLOR_SPECTRA_PHASE_S_HIGH_SPS,
+    "noise": COLOR_SPECTRA_NOISE, 
+    "noise_high_sps": COLOR_SPECTRA_NOISE_HIGH_SPS, 
+    "phase_p": COLOR_SPECTRA_P_PHASE}
+
+COLOR_SPECTRA_BOTTOM_FREQ_BOX = "darkgrey"
+COLOR_SPECTRA_BOTTOM_A0 = "cornflowerblue"
+COLOR_SPECTRA_BOTTOM_F_CENTER = "crimson"
+
+# Davy's grey
+COLOR_SPECTRA_TOP_TEXT_BOXES = "#555555"
+
+SPECTRA_TEXT_BOXES_YCOORD = 1.05
+SPECTRA_TEXT_BOXES_PADDING = 0.2
+SPECTRA_TEXT_BOXES_FACECOLOR = "white"
+
+SPECTRA_PLOT_TOP_XLABEL = "Time after origin time [seconds]"
+SPECTRA_PLOT_TOP_YLABEL = "Displacement ({}) [m]"
+
+SPECTRA_PLOT_BOTTOM_XLABEL = "Frequency [Hz]"
+SPECTRA_PLOT_BOTTOM_YLABEL = "Displacement PSD [dB]"
+
 
 def plot_spectra(
     fitter, fitting_parameters, fitting_parameters_defaults, dir_out: str,
@@ -302,10 +360,12 @@ def plot_spectra(
             print("products.plot_spectra: create figure for plot file {}".format(
                 fnam))
             
+            # TODO(fab): get rid of magic numbers
             fig = plt.figure(figsize=(20,12))
             fig.subplots_adjust(top=0.911,  bottom=0.097,
                                 left=0.049, right=0.972,
                                 hspace=0.2, wspace=0.116)
+            
             gs = fig.add_gridspec(2, 2)
             ax1 = fig.add_subplot(gs[0, :])
             ax2 = fig.add_subplot(gs[1, 0])
@@ -317,27 +377,38 @@ def plot_spectra(
             #     "Type={fitter.event.mars_event_type_short} "\
             #     "Component={component} {LF_streaminfo} {HF_streaminfo}')
             
+            streaminfo_plot = dict(LF=None, HF=None)
+            
             if len(LF_streaminfo) > 0:
                 LF_streaminfo_with_orientation = add_orientation_to_stream_info(
                     LF_streaminfo, component)
+                streaminfo_plot["LF"] = LF_streaminfo
+                streaminfo_plot["LF_orientation"] = \
+                    LF_streaminfo_with_orientation
             
             if len(HF_streaminfo) > 0:
                 HF_streaminfo_with_orientation = add_orientation_to_stream_info(
                     HF_streaminfo, component)
+                streaminfo_plot["HF"] = HF_streaminfo
+                streaminfo_plot["HF_orientation"] = \
+                    HF_streaminfo_with_orientation
+                
+            # TODO(fab): print filter information
+            # fig.suptitle("Event {} {}/Q{} {} {}".format(
+            #         fitter.event.name, fitter.event.mars_event_type_short, 
+            #         fitter.event.quality, LF_streaminfo_with_orientation, 
+            #         HF_streaminfo_with_orientation), fontsize='x-large')
             
-            fig.suptitle("Event {} {}/Q{} {} {}".format(
-                    fitter.event.name, fitter.event.mars_event_type_short, 
-                    fitter.event.quality, LF_streaminfo_with_orientation, 
-                    HF_streaminfo_with_orientation), fontsize='x-large')
+            fig.suptitle(
+                "Event {}".format(fitter.event.name), weight='bold', 
+                fontsize='x-large')
             
             _plot_spectra_top(
-                    fitter, ax1, tr, component, spectral_windows,
-                    fitting_parameters_pool
-            )
+                fitter, ax1, tr, component, spectral_windows,
+                fitting_parameters_pool, streaminfo_plot)
             _plot_spectra_bottom(
-                    ax2, ax3, fitter, LF_streaminfo, HF_streaminfo, component,
-                    fitting_parameters_pool, results, wf_type
-            )
+                ax2, ax3, fitter, streaminfo_plot, component,
+                fitting_parameters_pool, results, wf_type)
             
             fig.savefig(fnam)
             plt.close(fig)
@@ -345,7 +416,8 @@ def plot_spectra(
     print("products.plot_spectra: processing has ended")
     
     
-def _plot_spectra_top(fitter, ax, tr, component, windows, fitting_parameters):
+def _plot_spectra_top(
+    fitter, ax, tr, component, windows, fitting_parameters, streaminfo_plot):
 
     #if parameters.filter_apply:
     #    tr.filter('bandpass', freqmin=parameters.filter_min_freq, 
@@ -353,11 +425,19 @@ def _plot_spectra_top(fitter, ax, tr, component, windows, fitting_parameters):
     #              zerophase=parameters.filter_zero_phase,
     #              corners=parameters.filter_order)
     #    tr.taper(max_length=60, max_percentage=0.3)
-
-    sns.lineplot(ax=ax, x=tr.times(), y=tr.data, color='steelblue')
-
+    
     # this is stream_info with orientation
-    ax.set(xlabel=f'{tr.id}@{tr.stats.sampling_rate}')
+    stream_info_orientation = f'{tr.id}@{tr.stats.sampling_rate}'
+    # ax.set(xlabel=stream_info_orientation)
+    
+    stream_info_hflf = ""
+    if streaminfo_plot["HF"] is not None:
+        stream_info_hflf = "HF"
+    elif streaminfo_plot["LF"] is not None:
+        stream_info_hflf = "LF"
+    
+    ax.set(xlabel=SPECTRA_PLOT_TOP_XLABEL)
+    ax.set(ylabel=SPECTRA_PLOT_TOP_YLABEL.format(stream_info_hflf))
 
     to_tr_time = lambda time_str: UTCDateTime(time_str) - tr.stats.starttime
 
@@ -371,86 +451,137 @@ def _plot_spectra_top(fitter, ax, tr, component, windows, fitting_parameters):
     s_start     = to_tr_time(windows['S_spectral_start'])
     s_end       = to_tr_time(windows['S_spectral_end'])
 
-    rect = patches.Rectangle(xy=(noise_start, data_min),
-                             width=noise_end-noise_start,
-                             height=data_max-data_min,
-                             linewidth=3, edgecolor='darkgray',
-                             alpha=0.5, facecolor="none")
-    ax.add_patch(rect)
+    # plot filtered trace
+    trace_filtered = ax.plot(
+        tr.times(), tr.data, color=COLOR_SPECTRA_FILTERED_TRACE, linestyle='-',
+        label="filtered trace")
+    
+    # noise box
+    rect_noise = patches.Rectangle(
+        xy=(noise_start, data_min), width=noise_end-noise_start, 
+        height=data_max-data_min, linewidth=3, 
+        edgecolor=COLOR_SPECTRA_NOISE, alpha=0.5, facecolor="none",
+        label="noise window")
+    
+    ax.add_patch(rect_noise)
 
-    rect = patches.Rectangle(xy=(p_start, data_min),
-                             width=p_end-p_start,
-                             height=data_max-data_min,
-                             linewidth=3, edgecolor='red',
-                             alpha=0.3, facecolor="none")
-    ax.add_patch(rect)
+    # P phase box
+    rect_p = patches.Rectangle(
+        xy=(p_start, data_min), width=p_end-p_start, height=data_max-data_min,
+        linewidth=3, edgecolor=COLOR_SPECTRA_P_PHASE, alpha=0.3, 
+        facecolor="none", label="P phase window")
+    
+    ax.add_patch(rect_p)
 
-    rect = patches.Rectangle(xy=(s_start, data_min),
-                             width=s_end-s_start,
-                             height=data_max-data_min,
-                             linewidth=3, edgecolor='blue',
-                             alpha=0.3, facecolor="none")
-    ax.add_patch(rect)
+    # S phase box
+    rect_s = patches.Rectangle(
+        xy=(s_start, data_min), width=s_end-s_start, height=data_max-data_min,
+        linewidth=3, edgecolor=COLOR_SPECTRA_S_PHASE, alpha=0.3, 
+        facecolor="none", label="S phase window")
+    
+    ax.add_patch(rect_s)
 
-    # Seismic phases
+    # custom legend
+    lgd = ax.legend(
+        handles=[trace_filtered[0], rect_noise, rect_p, rect_s], 
+        loc='upper right')
+    
+    # seismic phases
+    # this defines the order of pick types. Clumsy!
+    # NOTE: Pg and Sg have been retired
     try:
         if fitter.get_event_type() in ['LF', 'WB', 'BB']:
             p_phase = fitter.get_pick('P') or fitter.get_pick('PP') or \
                 fitter.get_pick('P1') or fitter.get_pick('x1') or \
-                    fitter.get_pick('Pg') or fitter.get_pick('y1') or \
-                        fitter.get_pick('start')
+                    fitter.get_pick('y1') or fitter.get_pick('start')
             
             s_phase = fitter.get_pick('S') or fitter.get_pick('SS') or \
                 fitter.get_pick('S1') or fitter.get_pick('x2') or \
-                    fitter.get_pick('Sg') or fitter.get_pick('y2') or \
-                        fitter.get_pick('start')
+                    fitter.get_pick('y2') or fitter.get_pick('start')
         else:
             p_phase = fitter.get_pick('P') or fitter.get_pick('PP') or \
-                fitter.get_pick('P1') or fitter.get_pick('Pg') or \
-                    fitter.get_pick('y1') or fitter.get_pick('x1') or \
-                        fitter.get_pick('start')
+                fitter.get_pick('P1') or fitter.get_pick('y1') or \
+                    fitter.get_pick('x1') or fitter.get_pick('start')
             
             s_phase = fitter.get_pick('S') or fitter.get_pick('SS') or \
-                fitter.get_pick('S1') or fitter.get_pick('Sg') or \
-                    fitter.get_pick('y2') or fitter.get_pick('x2') or \
-                        fitter.get_pick('start')
+                fitter.get_pick('S1') or fitter.get_pick('y2') or \
+                    fitter.get_pick('x2') or fitter.get_pick('start')
     except:
         p_phase = fitter.get_pick('P') or fitter.get_pick('P1') or \
-            fitter.get_pick('x1') or fitter.get_pick('Pg') or \
-                fitter.get_pick('y1') or fitter.get_pick('start')
+            fitter.get_pick('x1') or fitter.get_pick('y1') or \
+                fitter.get_pick('start')
             
         s_phase = fitter.get_pick('S') or fitter.get_pick('S1') or \
-            fitter.get_pick('x2') or fitter.get_pick('Sg') or \
-                fitter.get_pick('y2') or fitter.get_pick('start')
+            fitter.get_pick('x2') or fitter.get_pick('y2') or \
+                fitter.get_pick('start')
 
-    # Mark the seismic phases
+    # mark the seismic phases (width is based on plot range, no uncertainty)
     width = (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.005
+    
     if p_phase:
         P = to_tr_time(p_phase)
-        ax.axvspan(xmin=P-width/2, xmax=P+width/2, facecolor='red', alpha=0.3)
+        ax.axvspan(
+            xmin=P-0.5*width, xmax=P+0.5*width, facecolor=COLOR_SPECTRA_P_PHASE, 
+            alpha=0.3, label="P phase")
         
     if s_phase:
         S = to_tr_time(s_phase)
-        ax.axvspan(xmin=S-width/2, xmax=S+width/2, facecolor='blue', alpha=0.3)
+        ax.axvspan(
+            xmin=S-0.5*width, xmax=S+0.5*width, facecolor=COLOR_SPECTRA_S_PHASE, 
+            alpha=0.3, label="S phase")
+    
+    # top annotations (type/quality, LF, HF, filter)
+    box_params = {'boxstyle': 'square', 'facecolor': 'white', 
+        'edgecolor': COLOR_SPECTRA_TOP_TEXT_BOXES, 
+        'pad': SPECTRA_TEXT_BOXES_PADDING}
+    
+    ax.text(0.05, SPECTRA_TEXT_BOXES_YCOORD, 
+        "{}/Q{}".format(fitter.event.mars_event_type_short, 
+        fitter.event.quality),
+        verticalalignment='center', horizontalalignment='center',
+        transform=ax.transAxes, bbox=box_params,
+        color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
+    
+    if streaminfo_plot["LF"] is not None:
+        ax.text(0.3, SPECTRA_TEXT_BOXES_YCOORD, 
+            "{}".format(streaminfo_plot["LF_orientation"]),
+            verticalalignment='center', horizontalalignment='center',
+            transform=ax.transAxes, bbox=box_params,
+            color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
+    
+    if streaminfo_plot["HF"] is not None:
+        ax.text(0.55, SPECTRA_TEXT_BOXES_YCOORD, 
+            "{}".format(streaminfo_plot["HF_orientation"]),
+            verticalalignment='center', horizontalalignment='center',
+            transform=ax.transAxes, bbox=box_params,
+            color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
+    
+    ax.text(0.8, SPECTRA_TEXT_BOXES_YCOORD, "filter:",
+        verticalalignment='center', horizontalalignment='center',
+        transform=ax.transAxes, bbox=box_params,
+        color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
+    
 
+def _plot_spectra_bottom(
+    axP, axS, fitter, streaminfo_plot, component, fitting_parameters, results, 
+    wf_type):
 
-def _plot_spectra_bottom(axP, axS, fitter, LF, HF, component, fitting_parameters, results, wf_type):
-
-    axP.set(xscale='log')
-    axS.set(xscale='log')
-
-    axP.set(xlabel='Frequency [Hz]', ylabel='Disp. PSD [db]')
-    axS.set(xlabel='Frequency [Hz]', ylabel='Disp. PSD [db]')
-
+    # P phase subplot
     axP.set_title(f'P phase [{component}]')
+    axP.set(
+        xlabel=SPECTRA_PLOT_BOTTOM_XLABEL, ylabel=SPECTRA_PLOT_BOTTOM_YLABEL, 
+        xscale='log')
+    
+    # S phase subplot
     axS.set_title(f'S phase [{component}]')
-
-    colors = sns.color_palette()
-
-    #
-    # VBB
-    #
-    if LF:
+    axS.set(
+        xlabel=SPECTRA_PLOT_BOTTOM_XLABEL, ylabel=SPECTRA_PLOT_BOTTOM_YLABEL,
+        xscale='log')
+    
+    colors = COLOR_SPECTRA_DICT
+    
+    ## VBB
+    if streaminfo_plot["LF"]:
 
         # noise is too low amplitude and affects the y-axis range
         if wf_type != "DENOISED":
@@ -459,25 +590,31 @@ def _plot_spectra_bottom(axP, axS, fitter, LF, HF, component, fitting_parameters
             noise_psd = fitter.get_noise_spectrum(component)[1:]
             noise_freq = fitter.get_noise_frequency()[1:]
 
-            sns.lineplot(ax=axP, x=noise_freq, y=noise_psd, label='noise', color=colors[7])
-            sns.lineplot(ax=axS, x=noise_freq, y=noise_psd, label='noise', color=colors[7])
+            sns.lineplot(
+                ax=axP, x=noise_freq, y=noise_psd, label='noise', 
+                color=colors["noise"])
+            sns.lineplot(
+                ax=axS, x=noise_freq, y=noise_psd, label='noise', 
+                color=colors["noise"])
 
         # P
         P_psd = fitter.get_P_spectrum(component)[1:]
         P_freq = fitter.get_P_frequency()[1:]
 
-        sns.lineplot(ax=axP, x=P_freq, y=P_psd, label='phase', color=colors[1])
+        sns.lineplot(
+            ax=axP, x=P_freq, y=P_psd, label='P phase (LF)', 
+            color=colors["phase_p_lf"])
 
         # S
         S_psd = fitter.get_S_spectrum(component)[1:]
         S_freq = fitter.get_S_frequency()[1:]
 
-        sns.lineplot(ax=axS, x=S_freq, y=S_psd, label='phase', color=colors[1])
+        sns.lineplot(
+            ax=axS, x=S_freq, y=S_psd, label='S phase (LF)', 
+            color=colors["phase_s_lf"])
 
-    #
-    # SP
-    #
-    if HF:
+    ## SP
+    if streaminfo_plot["HF"]:
 
         # noise is too low amplitude and affects the y-axis range
         if wf_type != "DENOISED":
@@ -486,121 +623,161 @@ def _plot_spectra_bottom(axP, axS, fitter, LF, HF, component, fitting_parameters
             noise_psd = fitter.get_noise_spectrum_SP(component)[1:]
             noise_freq = fitter.get_noise_frequency_SP()[1:]
 
-            sns.lineplot(ax=axP, x=noise_freq, y=noise_psd, label='noise, high sps', color=colors[7])
-            sns.lineplot(ax=axS, x=noise_freq, y=noise_psd, label='noise, high sps', color=colors[7])
+            sns.lineplot(
+                ax=axP, x=noise_freq, y=noise_psd, label='noise (HF)', 
+                color=colors["noise_high_sps"])
+            
+            sns.lineplot(
+                ax=axS, x=noise_freq, y=noise_psd, label='noise (HF)', 
+                color=colors["noise_high_sps"])
 
         # P
         P_psd = fitter.get_P_spectrum_SP(component)[1:]
         P_freq = fitter.get_P_frequency_SP()[1:]
 
-        sns.lineplot(ax=axP, x=P_freq, y=P_psd, label='phase, high sps', color=colors[9])
+        sns.lineplot(
+            ax=axP, x=P_freq, y=P_psd, label='P phase (HF)', 
+            color=colors["phase_p_high_sps"])
 
         # S
         S_psd = fitter.get_S_spectrum_SP(component)[1:]
         S_freq = fitter.get_S_frequency_SP()[1:]
 
-        sns.lineplot(ax=axS, x=S_freq, y=S_psd, label='phase, high sps', color=colors[9])
+        sns.lineplot(
+            ax=axS, x=S_freq, y=S_psd, label='S phase (HF)', 
+            color=colors["phase_s_high_sps"])
 
     # frequency ranges - P
     fmin = fitting_parameters.get_value(component, f'fminP')
     fmax = fitting_parameters.get_value(component, f'fmaxP')
+    
     if fmin and fmax:
-        axP.axvspan(xmin=axP.get_xlim()[0], xmax=fmin, facecolor='darkgray', alpha=0.3)
-        axP.axvspan(xmin=fmax, xmax=axP.get_xlim()[1], facecolor='darkgray', alpha=0.3)
+        axP.axvspan(
+            xmin=axP.get_xlim()[0], xmax=fmin, 
+            facecolor=COLOR_SPECTRA_BOTTOM_FREQ_BOX, alpha=0.3)
+        axP.axvspan(
+            xmin=fmax, xmax=axP.get_xlim()[1], 
+            facecolor=COLOR_SPECTRA_BOTTOM_FREQ_BOX, alpha=0.3)
 
     # frequency ranges - S
     fmin = fitting_parameters.get_value(component, f'fminS')
     fmax = fitting_parameters.get_value(component, f'fmaxS')
+    
     if fmin and fmax:
-        axS.axvspan(xmin=axS.get_xlim()[0], xmax=fmin, facecolor='darkgray', alpha=0.3)
-        axS.axvspan(xmin=fmax, xmax=axS.get_xlim()[1], facecolor='darkgray', alpha=0.3)
+        axS.axvspan(
+            xmin=axS.get_xlim()[0], xmax=fmin, 
+            facecolor=COLOR_SPECTRA_BOTTOM_FREQ_BOX, alpha=0.3)
+        axS.axvspan(
+            xmin=fmax, xmax=axS.get_xlim()[1], 
+            facecolor=COLOR_SPECTRA_BOTTOM_FREQ_BOX, alpha=0.3)
 
     if fitting_parameters.get_value(None, 'is_manually_reviewed'):
+        
         # manual fit curve P
         noise_freq = results[component][f'f_phase_P'][1:]
         fit = results[component][f'y_lorentz_new_plot_P'][1:]
 
-        sns.lineplot(ax=axP, x=noise_freq, y=fit, label='manual fit', color=colors[2])
+        sns.lineplot(
+            ax=axP, x=noise_freq, y=fit, label='manual fit', 
+            color=colors["manual_fit"])
 
         # P uncertainty
         fmin, ymin, fmax, ymax = fitter.get_uncertainty(component, 'P')
         if fmin is not None and fmax is not None:
+            
             # fmin, fmax are identical, it doesn't matter which one we use
             axP.fill_between(fmin[1:], ymin[1:], ymax[1:], alpha=0.2)
 
-    else:
-        # best fit curve P
-        noise_freq = results[component][f'f_noise_maskedP']
-        fit = results[component][f'y_best_fit_P']
-
-        sns.lineplot(ax=axP, x=noise_freq, y=fit, label='best fit', color=colors[3])
-
-
-    if fitting_parameters.get_value(None, 'is_manually_reviewed'):
         # manual fit curve S
         noise_freq = results[component][f'f_phase_S'][1:]
         fit = results[component][f'y_lorentz_new_plot_S'][1:]
 
-        sns.lineplot(ax=axS, x=noise_freq, y=fit, label='manual fit', color=colors[2])
+        sns.lineplot(
+            ax=axS, x=noise_freq, y=fit, label='manual fit', 
+            color=colors["manual_fit"])
 
         # S uncertainty
         fmin, ymin, fmax, ymax = fitter.get_uncertainty(component, 'S')
         if fmin is not None and fmax is not None:
+            
             # fmin, fmax are identical, it doesn't matter which one we use
             axS.fill_between(fmin[1:], ymin[1:], ymax[1:], alpha=0.2)
-
+    
     else:
-        # best fit curve S
+        
+        # automatic best fit curve P
+        noise_freq = results[component][f'f_noise_maskedP']
+        fit = results[component][f'y_best_fit_P']
+
+        sns.lineplot(
+            ax=axP, x=noise_freq, y=fit, label='best fit', 
+            color=colors["phase_p"])
+        
+        # automatic best fit curve S
         noise_freq = results[component][f'f_noise_maskedS']
         fit = results[component][f'y_best_fit_S']
 
-        sns.lineplot(ax=axS, x=noise_freq, y=fit, label='best fit', color=colors[3])
+        sns.lineplot(
+            ax=axS, x=noise_freq, y=fit, label='best fit', 
+            color=colors["phase_s"])
 
     # A0
+    _add_a0_marker(axP, axS, fitting_parameters, component)
+
+    # fc
+    _add_fc_marker(axP, axS, fitting_parameters, component)
+    
+    # automatic legends
+    _ = axP.legend(loc='lower left')
+    _ = axS.legend(loc='lower left')
+
+
+def _add_a0_marker(axP, axS, fitting_parameters, component):
+    
     axP.axhline(y=fitting_parameters.get_value(component, 'A0'), 
-            color='cornflowerblue', alpha=0.3)
+            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3)
     axP.axhline(y=fitting_parameters.get_value(component, 'A0-low'), 
-                color='cornflowerblue', alpha=0.3, linestyle='dashed')
+                color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3, linestyle='dashed')
     axP.axhline(y=fitting_parameters.get_value(component, 'A0-high'), 
-                color='cornflowerblue', alpha=0.3, linestyle='dashed')
+                color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3, linestyle='dashed')
     axP.annotate('A0',
             xy=(axP.get_xlim()[0], 
                 fitting_parameters.get_value(component, 'A0')),
-            color='cornflowerblue', alpha=0.5)
+            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.5)
 
     axS.axhline(y=fitting_parameters.get_value(component, 'A0'), 
-            color='cornflowerblue', alpha=0.3)
+            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3)
     axS.axhline(y=fitting_parameters.get_value(component, 'A0-low'), 
-                color='cornflowerblue', alpha=0.3, linestyle='dashed')
+                color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3, linestyle='dashed')
     axS.axhline(y=fitting_parameters.get_value(component, 'A0-high'), 
-                color='cornflowerblue', alpha=0.3, linestyle='dashed')
+                color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3, linestyle='dashed')
     axS.annotate('A0',
             xy=(axS.get_xlim()[0], 
                 fitting_parameters.get_value(component, 'A0')),
-            color='cornflowerblue', alpha=0.5)
+            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.5)
 
-    # fc
+
+def _add_fc_marker(axP, axS, fitting_parameters, component):
+    
     axP.axvline(x=fitting_parameters.get_value(component, 'cornerfrequency'),
-            color='crimson', alpha=0.3)
+        color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3)
     axP.axvline(x=fitting_parameters.get_value(component, 'cornerfreq-low'), 
-                color='crimson', alpha=0.3, linestyle='dashed')
+        color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3, linestyle='dashed')
     axP.axvline(x=fitting_parameters.get_value(component, 'cornerfreq-high'),
-                color='crimson', alpha=0.3, linestyle='dashed')
-    axP.annotate('fc', 
-            xy=(fitting_parameters.get_value(component, 'cornerfrequency'),
-                axP.get_ylim()[0] + 1),
-            color='crimson', alpha=0.5)
+        color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3, linestyle='dashed')
+    axP.annotate(
+        'fc', xy=(fitting_parameters.get_value(component, 'cornerfrequency'),
+        axP.get_ylim()[0] + 1), color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.5)
 
     axS.axvline(x=fitting_parameters.get_value(component, 'cornerfrequency'),
-            color='crimson', alpha=0.3)
+        color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3)
     axS.axvline(x=fitting_parameters.get_value(component, 'cornerfreq-low'), 
-                color='crimson', alpha=0.3, linestyle='dashed')
+        color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3, linestyle='dashed')
     axS.axvline(x=fitting_parameters.get_value(component, 'cornerfreq-high'),
-                color='crimson', alpha=0.3, linestyle='dashed')
-    axS.annotate('fc', 
-            xy=(fitting_parameters.get_value(component, 'cornerfrequency'),
-                axS.get_ylim()[0] + 1),
-            color='crimson', alpha=0.5)
+        color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3, linestyle='dashed')
+    axS.annotate(
+        'fc', xy=(fitting_parameters.get_value(component, 'cornerfrequency'),
+        axS.get_ylim()[0] + 1), color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.5)
 
 
 def plot_filterbanks(
@@ -717,13 +894,8 @@ def plot_filterbanks(
             
             # HF family
             
-            # TODO(fab): are Pg and Sg still being used? 
-            if 'Sg' in event.picks and 'Pg' in event.picks and \
-                    len(event.picks['Sg']) * len(event.picks['Pg']) > 0:
-                t_S = utct(event.picks['Sg'])
-                t_P = utct(event.picks['Pg'])
-                
-            elif 'S' in event.picks and 'P' in event.picks and \
+            # NOTE: Pg and Sg have been retired
+            if 'S' in event.picks and 'P' in event.picks and \
                     len(event.picks['S']) * len(event.picks['P']) > 0:
                 t_S = utct(event.picks['S'])
                 t_P = utct(event.picks['P'])

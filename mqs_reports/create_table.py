@@ -38,6 +38,12 @@ from mqs_reports.snr import calc_SNR, calc_stalta
 from mqs_reports.utils import solify
 
 
+DIR_OUT_SPECT = "./spect/"
+#DIR_OUT_SPECT = "./spect.new/"
+
+# DIR_OUT_FILTERBANKS = "./filterbanks/"
+DIR_OUT_FILTERBANKS = "./filterbanks.new/"
+
 def create_row_header(list):
     row = '    <tr>\n'
     for li in zip(list):
@@ -271,7 +277,10 @@ def check_picks(ievent, event):
         #print('no S, but I found a SS')
         missing_picks.remove('S')
 
-    mandatory_HF_ABC = ['Pg', 'Sg', 'S_spectral_start', 'S_spectral_end', 'Peak_M2.4']
+    # NOTE: retired Pg, Sg (what about P1, S1?)
+    # mandatory_HF_ABC = ['Pg', 'Sg', 'S_spectral_start', 'S_spectral_end', 'Peak_M2.4']
+    mandatory_HF_ABC = ['P', 'S', 'S_spectral_start', 'S_spectral_end', 'Peak_M2.4']
+    
     if event.quality in ['A', 'B', 'C'] and event.mars_event_type_short in ['HF', 'VF', '24']:
         for pick in mandatory_HF_ABC:
             if pick not in event.picks or event.picks[pick] == '':
@@ -292,9 +301,10 @@ def check_picks(ievent, event):
     pairs = [['P_spectral_start', 'P_spectral_end'],
              ['P', 'S'],
              #['PP', 'SS'],
-             ['Pg', 'Sg'],
+             #['Pg', 'Sg'],
              ['noise_start', 'noise_end'],
              ['start', 'end']]
+    
     for pair in pairs:
         if not (event.picks[pair[0]] == '' or event.picks[pair[1]] == ''):
             if utct(event.picks[pair[0]]) > utct(event.picks[pair[0]]):
@@ -738,7 +748,8 @@ if __name__ == '__main__':
             normtypes.append(n)
     
     # filterbanks
-    if 'all' in args.plot or 'filterbanks' in args.plot or args.calc_filterbanks:
+    if 'all' in args.plot or 'filterbanks' in args.plot or \
+        args.calc_filterbanks:
         
         if 'all' in args.plot or 'filterbanks' in args.plot:
             make_plot = True
@@ -754,7 +765,7 @@ if __name__ == '__main__':
                             args.data_type, smprate, normtype, rotate))
                     
                     plot_filterbanks(
-                        catalog, dir_out='filterbanks', annotations=ann, 
+                        catalog, dir_out=DIR_OUT_FILTERBANKS, annotations=ann, 
                         wf_type=args.data_type, normtype=normtype, 
                         rotate=rotate, smprate=smprate,
                         orientation=args.orientation, norm=normtypes,
@@ -790,7 +801,8 @@ if __name__ == '__main__':
                 plot_spectra(
                     fitter=fitter, fitting_parameters=fitting_parameters,
                     fitting_parameters_defaults=fitting_parameters_defaults,
-                    dir_out='spect', winlen_sec=20.0, wf_type=args.data_type,
+                    dir_out=DIR_OUT_SPECT, winlen_sec=20.0, 
+                    wf_type=args.data_type,
                     rotate=rotate, smprate=smprate, 
                     orientation=args.orientation,
                     force_products=args.force_products,

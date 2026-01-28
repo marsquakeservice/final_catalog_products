@@ -533,13 +533,15 @@ def read_JSON_Events(
                     picks_sigma[phase_code] = phase_data[0]['pick_time_lu']
                     picks_methodid[phase_code] = ""
     
-            # if GZ BAZ
-            if 'gz_baz' in ev_info:
-                gz_baz = ev_info['gz_baz']['bazPolarisation']
+            # if GZ BAZ (only for info)
+            try:
+                gz_baz = ev_info['gz_baz']['value']['bazPolarisation']
 
                 print("ev {}: GZ BAZ: {:.1f}, lon: {:.5f}, "\
                     "lat: {:.5f}".format(ev_name, gz_baz, 
                     ev_info['longitude'], ev_info['latitude']))
+            except Exception:
+                pass 
         
         curr_event = Event(
             name=ev_name,

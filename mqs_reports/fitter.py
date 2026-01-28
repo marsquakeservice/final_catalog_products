@@ -27,9 +27,9 @@ import obspy
 import catalog
 import event
 
-from fittingutils import real2dB, dB2real, lorentz_att, \
-                          vectorized_misfit_lorentz, ratio_HV, \
-                          calc_cov_lorentz
+from fittingutils import \
+    real2dB, dB2real, lorentz_att, vectorized_misfit_lorentz, ratio_HV, \
+    calc_cov_lorentz
 
 tstarfac = dict(P=1./3, S=1.)
 
