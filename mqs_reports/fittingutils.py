@@ -61,7 +61,8 @@ def hessian2ellipse(hessian, irow, icol):
 
     return lenx, leny, alpha
 
-def misfit_lorentz(vars, f, p_P, p_S, p_noise, sigma_P=10., sigma_S=5.):
+def misfit_lorentz(vars, f, p_P, p_S, p_noise, sigma_P=10., sigma_S=5.0):
+    
     SP_ratio, A0, f0, fc, tstar, fw, ampfac = vars
 
     misfit = np.sum(
@@ -78,28 +79,36 @@ def misfit_lorentz(vars, f, p_P, p_S, p_noise, sigma_P=10., sigma_S=5.):
               np.sum(sigma_P / np.sqrt(f))
     return misfit
 
-def vectorized_lorentz_att(f: np.array,
-                A0: float,
-                f0: float,
-                f_c: np.array,
-                tstar: np.array,
-                fw: float,
-                ampfac: float) -> np.array:
-        w = (f - f0) / (fw / 2.)
-        stf_amp = 1 / (1 + (f / f_c.flatten()[:,np.newaxis]) ** 2)
-        
-        term1 = 1 + ampfac / (1 + w ** 2)
-        term2 = stf_amp
-        term3 = np.exp(-tstar.flatten()[:,np.newaxis] * f * np.pi)
 
-        result = A0 + 20 * np.log10(term1 * term2 * term3)
-        return result
+def vectorized_lorentz_att(
+    f: np.array,
+    A0: float,
+    f0: float,
+    f_c: np.array,
+    tstar: np.array,
+    fw: float,
+    ampfac: float) -> np.array:
+    
+    w = (f - f0) / (fw / 2.)
+    stf_amp = 1 / (1 + (f / f_c.flatten()[:,np.newaxis]) ** 2)
+    
+    term1 = 1 + ampfac / (1 + w ** 2)
+    term2 = stf_amp
+    term3 = np.exp(-tstar.flatten()[:,np.newaxis] * f * np.pi)
 
-def vectorized_misfit_lorentz(vars, f, p_P, p_S, p_noise, sigma_P=10., sigma_S=5.):
+    result = A0 + 20 * np.log10(term1 * term2 * term3)
+    
+    return result
+
+
+def vectorized_misfit_lorentz(
+    vars, f, p_P, p_S, p_noise, sigma_P=10., sigma_S=5.0):
+    
     SP_ratio, A0, f0, fc, tstar, fw, ampfac = vars
 
     lorentz_P = vectorized_lorentz_att(f, A0 + SP_ratio, f0, fc, tstar * tstarfac['P'], fw, ampfac)
     lorentz_S = vectorized_lorentz_att(f, A0, f0, fc, tstar, fw, ampfac)
+    
     P_in_dB = real2dB(p_noise + dB2real(lorentz_P)) - real2dB(p_P)
     S_in_dB = real2dB(p_noise + dB2real(lorentz_S)) - real2dB(p_S)
 
@@ -111,15 +120,22 @@ def vectorized_misfit_lorentz(vars, f, p_P, p_S, p_noise, sigma_P=10., sigma_S=5
     
     return misfit.reshape(fc.shape)
 
-def calc_cov_lorentz(f, p_P, p_S, p_noise, SP_ratio, A0, f0, fc, tstar, fw, ampfac):
-    res = minimize(fun=misfit_lorentz,
-                   x0=(SP_ratio, A0, f0, fc, tstar, fw, ampfac),
-                   bounds=((-25, 25),  # SP ratio
-                           (-220., -140.),  # A0
-                           (2.2, 2.5),  # f0
-                           (0.0, 1.2),  # f_c
-                           (0.01, 1.5),  # tstar
-                           (0.0, 0.4),  # fw
-                           (0.0, 40.)),  # ampfac
-                   args=(f, p_P, p_S, p_noise))
+
+def calc_cov_lorentz(
+    f, p_P, p_S, p_noise, SP_ratio, A0, f0, fc, tstar, fw, ampfac):
+    
+    res = minimize(
+        fun=misfit_lorentz,
+        x0=(SP_ratio, A0, f0, fc, tstar, fw, ampfac),
+        
+        # TODO(fab): magic numbers
+        bounds=((-25, 25),  # SP ratio
+                (-220., -140.),  # A0
+                (2.2, 2.5),  # f0
+                (0.0, 1.2),  # f_c
+                (0.01, 1.5),  # tstar
+                (0.0, 0.4),  # fw
+                (0.0, 40.)),  # ampfac
+        args=(f, p_P, p_S, p_noise))
+    
     return res

@@ -33,6 +33,16 @@ from fittingutils import \
 
 tstarfac = dict(P=1./3, S=1.)
 
+SP_RATIO_P = -20
+SP_RATIO_S = 0 
+
+FREQ_MIN_PER_EVENT_TYPE = dict(
+    BB=0.15, XB=0.15, WB=0.15, LF=0.15, HF=0.9, VF=1.1)
+
+FREQ_MAX_PER_EVENT_TYPE = dict(
+    BB=1.5, XB=6.0, WB=6.0, LF=1.5, HF=4.0, VF=6.0)
+
+
 class Est2DGaussian:
     def __init__(self,
                  x: np.array,
@@ -53,15 +63,19 @@ class Est2DGaussian:
         self.success = False
 
         M0 = value.sum()
+        
         self.x0 = (x * value).sum() / M0
         self.y0 = (y * value).sum() / M0
+        
         Mxx = (x * x * value).sum() / M0 - self.x0 * self.x0
         Myy = (y * y * value).sum() / M0 - self.y0 * self.y0
         Mxy = (x * y * value).sum() / M0 - self.x0 * self.y0
+        
         D = 2 * (Mxx * Myy - Mxy * Mxy)
         a = Myy / D
         b = Mxx / D
         c = -Mxy / D
+        
         if a * b - c * c < 0 or a <= 0 or b <= 0:
             self.sx = None
             self.sy = None
@@ -70,6 +84,7 @@ class Est2DGaussian:
             self.x0 = None
             self.y0 = None
             self.success = False
+            
             return
 
         # Find the area of one pixel expressed in grids to find amplitude A.
@@ -78,6 +93,7 @@ class Est2DGaussian:
         ny = x.shape[1]
         dx = abs(x[0, 0] - x[0, -1]) / nx
         dy = abs(y[0, 0] - y[-1, -1]) / ny
+        
         self.A = dx * dy * M0 * (a * b - c * c) ** 0.5 / np.pi
 
         p = ((a - b) ** 2 + 4 * c * c) ** 0.5
@@ -95,16 +111,21 @@ class Est2DGaussian:
         self.sigma_y = minor
         self.success = True
 
+
     def eval(self, x, y):  # x, y, A, x0, y0, sigma_x, sigma_y, theta):
+        
         # https://www.astro.rug.nl/~vogelaar/Gaussians2D/2dgaussians.html
         theta = np.radians(self.theta_deg)
         sigx2 = self.sigma_x ** 2
         sigy2 = self.sigma_y ** 2
+        
         a = np.cos(theta) ** 2 / (2 * sigx2) + np.sin(theta) ** 2 / (2 * sigy2)
         b = np.sin(theta) ** 2 / (2 * sigx2) + np.cos(theta) ** 2 / (2 * sigy2)
         c = np.sin(2 * theta) / (4 * sigx2) - np.sin(2 * theta) / (4 * sigy2)
 
-        expo = -a * (x - self.x0) ** 2 - b * (y - self.y0) ** 2 - 2 * c * (x - self.x0) * (y - self.y0)
+        expo = -a * (x - self.x0) ** 2 - b * (y - self.y0) ** 2 - \
+            2 * c * (x - self.x0) * (y - self.y0)
+        
         return self.A * np.exp(expo)
 
 
@@ -112,22 +133,29 @@ def timeit(reftime):
     diff = dt.datetime.now() - reftime
     return "{:.2f} s elapsed".format(diff.total_seconds())
 
-class Fitter:
+
+class Fitter(object):
+    
     def __init__(self, catalog, inventory, path_sc3dir):
         self.event = None
+        
         self.values_new = dict()
         self.phase = 'P'
         self.component = 'Z'
 
         # Load H/V values once when the instance created
-        self.HV_ipl = dict()
-        self.HV_ipl['Z'] = np.ones_like
-        self.HV_ipl['N'] = ratio_HV()
-        self.HV_ipl['E'] = ratio_HV()
-        self.HV_ipl['R'] = ratio_HV()
-        self.HV_ipl['T'] = ratio_HV()
-        self.SP_ratio = dict(P=-20, S=0)
-        self.SP_ratio_init = dict(P=-20, S=0)
+        ratio_hv = ratio_HV()
+        self.HV_ipl = dict(
+            Z=np.ones_like, N=ratio_hv, E=ratio_hv, R=ratio_hv, T=ratio_hv)
+        
+        # self.HV_ipl['Z'] = np.ones_like
+        # self.HV_ipl['N'] = ratio_HV()
+        # self.HV_ipl['E'] = ratio_HV()
+        # self.HV_ipl['R'] = ratio_HV()
+        # self.HV_ipl['T'] = ratio_HV()
+        
+        self.SP_ratio = dict(P=SP_RATIO_P, S=SP_RATIO_S)
+        self.SP_ratio_init = dict(P=SP_RATIO_P, S=SP_RATIO_S)
         
         # Dict to store all three components fitting results
         self.three_comp_results = {'Z': None, 'N': None, 'E': None}
@@ -145,8 +173,9 @@ class Fitter:
             "[Fitter] Reading inventory...DONE [{}]".format(timeit(start_time)))
 
         self.event = None
-        self.fmin = dict(BB=0.15, XB=0.15, WB=0.15, LF=0.15, HF=0.9, VF=1.1)
-        self.fmax = dict(BB=1.5, XB=6.0, WB=6.0, LF=1.5, HF=4.0, VF=6.0)
+        
+        self.fmin = FREQ_MIN_PER_EVENT_TYPE
+        self.fmax = FREQ_MAX_PER_EVENT_TYPE
     
     
     def swap_event(
@@ -154,7 +183,7 @@ class Fitter:
         smprate="", force_products=False, calculate_spectra=False, 
         keep_spectra=True):
         """ 
-        Change the current event, read its waveforms and calculate spectra 
+        Change the current event, read its waveforms and calculate spectra.
         
         """
         
@@ -193,21 +222,27 @@ class Fitter:
         np.ma.masked_less(f_noise_masked, value=0.1, copy=False)
         return f_noise_masked
     
+    
     def get_pick(self, label):
         try:
             return self.event.picks[label]
         except:
             return None
-        
+    
+    
     def get_available_picks(self):
         """ Returns the available picks for the active event """
+        
         available = []
+        
         for phase in ['P', 'S', 'PP', 'SS', 'Pdiff', 'P1', 'S1', 'Pg', 'Sg', 
                       'x1', 'x2', 'y1', 'y2', 'start', 'end',
                       'noise_start', 'noise_end', 'P_spectral_start',
                       'P_spectral_end', 'S_spectral_start', 'S_spectral_end']:
+            
             if self.get_pick(phase):
                 available.append(phase)
+        
         return available
     
     def get_catalog(self):
@@ -363,13 +398,16 @@ class Fitter:
         
         self.values_new['tstar'] = tstar
         self.values_new['f_c'] = fc
+        
         self.component = component
         self.values_new['A0'] = fitting_parameters.get_value(component, 'A0')
         self.values_new['f0'] = fitting_parameters.get_value(component, 'f0')
         self.values_new['fw'] = fitting_parameters.get_value(component, 'spectralwidth')
         self.values_new['ampfac'] = fitting_parameters.get_value(component, 'amplification')
         self.SP_ratio['P'] = -fitting_parameters.get_value(component, 'StoPratio')
+        
         self.values_new['SP_ratio'] = fitting_parameters.get_value(component, 'StoPratio')
+        
         self.values_new['fminP'] = fitting_parameters.get_value(component, 'fminP')
         self.values_new['fmaxP'] = fitting_parameters.get_value(component, 'fmaxP')
         self.values_new['fminS'] = fitting_parameters.get_value(component, 'fminS')

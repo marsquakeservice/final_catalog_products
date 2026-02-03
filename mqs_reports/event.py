@@ -10,8 +10,10 @@ Marsquake service Mars event catalogue
     Luca Scarabello (luca.scarabello@sed.ethz.ch), 2024
     Savas Ceylan (savas.ceylan@eaps.ethz.ch), 2024
     Fabian Euchner (fabian.euchner@sed.ethz.ch), 2024
+    
 :license:
     GPLv3
+    
 """
 
 import copy
@@ -48,6 +50,7 @@ from obspy.taup.taup_create import build_taup_model
         
 import scipy.signal as signal
 
+import mqs_reports.constants as constants
 import mqs_reports.polarisation_analysis as pa
 
 from mqs_reports.annotations import Annotations
@@ -66,11 +69,19 @@ from mqs_reports.utils import envelope_smooth
 from mqs_reports.utils import uncertainty_from_pdf
 
 
-RADIUS_MARS = 3389.5
-CRUST_VP = 4.
-CRUST_VS = 4. / 3. ** 0.5
-LANDER_LAT = 4.5024
-LANDER_LON = 135.6234
+from marsprocessingtools import constants as marsconstants
+from marsprocessingtools import constants as marsconstants
+
+from singlestationlocator import geodesy as marsgeodesy
+
+
+RADIUS_MARS = marsgeodesy.MARS_RADIUS_MEAN
+
+LANDER_LAT = marsconstants.LANDER_LATITUDE
+LANDER_LON = marsconstants.LANDER_LONGITUDE
+
+CRUST_VP = marsconstants.MARS_CRUST_VP
+CRUST_VS = marsconstants.MARS_CRUST_VS
 
 
 EVENT_TYPES_SHORT = {
@@ -116,24 +127,29 @@ FILTERBANK_PLOT_SCALE_FACTOR = 4
 PICK_METHOD_ALIGNED = 'aligned'
 
 
-class Event:
-    def __init__(self,
-                 name: str,
-                 publicid: str,
-                 origin_publicid: str,
-                 picks: dict,
-                 picks_sigma: dict,
-                 quality: str,
-                 latitude: float,
-                 longitude: float,
-                 sso_distance: float,
-                 sso_distance_pdf: float,
-                 sso_origin_time: str,
-                 mars_event_type: str,
-                 origin_time: str,
-                 picks_methodid: dict):
+class Event(object):
+    
+    def __init__(
+        self,
+        name,
+        publicid,
+        origin_publicid,
+        picks,
+        picks_sigma,
+        quality,
+        latitude,
+        longitude,
+        sso_distance,
+        sso_distance_pdf,
+        sso_origin_time,
+        mars_event_type,
+        origin_time,
+        origin_time_screen,
+        picks_methodid,
+        baz=None):
         
         self.name = name.strip()
+        
         self.publicid = publicid
         self.origin_publicid = origin_publicid
         self.picks = picks
@@ -142,6 +158,8 @@ class Event:
         self.quality = quality[-1]
         self.mars_event_type = mars_event_type.split('#')[-1]
 
+        
+        
         try:
             self.sol = solify(utct(self.picks['start'])).julday
             self.starttime = utct(utct(self.picks['start']))
@@ -158,11 +176,19 @@ class Event:
 
         self.amplitudes = dict()
 
-        # Set distance or calculate it for HF, VHF and 2.4 events
+        # Set distance 
+        # DEPRECATED: or calculate it for HF, VHF and 2.4 events
         self.latitude = latitude
         self.longitude = longitude
         self.distance_type = 'unknown'
 
+        self.origin_time = utct(sso_origin_time)
+        self.origin_time_screen = origin_time_screen
+        
+        self.distance = None
+        self.distance_sigma = None
+        self.baz = baz
+        
         # Case that location was determined from BAZ and distance
         if (abs(self.latitude - LANDER_LAT) > 1e-3 and
                 abs(self.longitude - LANDER_LON) > 1e-3):
@@ -172,13 +198,13 @@ class Event:
                                                 lat2=LANDER_LAT,
                                                 lon2=LANDER_LON,
                                                 a=RADIUS_MARS)
+            
             # self.distance = kilometers2degrees(dist_km,
             #                                    radius=RADIUS_MARS)
             self.distance = sso_distance
             self.distance_pdf = sso_distance_pdf
             self.baz = baz
             self.az = az
-            self.origin_time = utct(origin_time)
             
             self.calc_distance_sigma_from_pdf()
             
@@ -195,7 +221,6 @@ class Event:
         # time should be taken from SSO (ie the locator PDF output)
         elif sso_distance is not None:
             
-            self.origin_time = utct(sso_origin_time)
             self.distance = sso_distance
             self.distance_pdf = sso_distance_pdf
             self.calc_distance_sigma_from_pdf()
@@ -203,38 +228,42 @@ class Event:
             self.baz = None
 
         # Case that distance can be estimated from Pg/Sg arrivals
-        elif self.mars_event_type_short in ['HF', 'SF', 'VF', '24']:
-            
-            try:
-                distance_tmp, otime_tmp, distance_sigma_tmp = \
-                    self.calc_distance()
-            
-            except ValueError as e:
-                print('Problem with event %s' % self.name)
-                print(e)
-                self.distance = None
-                self.distance_sigma = None
-                self.origin_time = utct(origin_time)
-            
-            else:
-                if distance_tmp is not None:
-                    self.distance = distance_tmp
-                    self.origin_time = utct(otime_tmp)
-                    self.distance_type = 'PgSg'
-                    self.distance_sigma = distance_sigma_tmp
-                else:
-                    self.distance = None
-                    self.distance_sigma = None
-                    self.origin_time = utct(origin_time)
+        # OBSOLETE
+#         elif self.mars_event_type_short in ['HF', 'SF', 'VF', '24']:
+#             
+#             try:
+#                 distance_tmp, otime_tmp, distance_sigma_tmp = \
+#                     self.calc_distance()
+#             
+#             except ValueError as e:
+#                 print('Problem with event %s' % self.name)
+#                 print(e)
+#                 self.distance = None
+#                 self.distance_sigma = None
+#                 self.origin_time = utct(origin_time)
+#             
+#             else:
+#                 if distance_tmp is not None:
+#                     self.distance = distance_tmp
+#                     self.origin_time = utct(otime_tmp)
+#                     self.distance_type = 'PgSg'
+#                     self.distance_sigma = distance_sigma_tmp
+#                 else:
+#                     self.distance = None
+#                     self.distance_sigma = None
+#                     self.origin_time = utct(origin_time)
+# 
+#             self.baz = None
+# 
+#         else:
+#             self.origin_time = utct(origin_time)
+#             self.distance = None
+#             self.distance_sigma = None
+#             self.baz = None
 
-            self.baz = None
-
-        else:
-            self.origin_time = utct(origin_time)
-            self.distance = None
-            self.distance_sigma = None
-            self.baz = None
-
+        self.dir_cache = constants.EVENT_PRE_COMPUTE_DIR
+        self.is_file_path_set = False
+        
         self._waveforms_read = False
         self._spectra_available = False
         self._filterbanks_available = False
@@ -246,16 +275,19 @@ class Event:
         self.spectra = None
         self.spectra_SP = None
         
-        self.filterbank_data = None
-
-        self.plot_parameters = dict()
+        self.event_metadata = dict(
+            event=dict(), spectra=dict(), filterbanks=dict())
+        
+        self.plot_parameters = None
         
         self.fnam_report = dict()
         self.fnam_polarisation = dict()
 
+
     @property
     def mars_event_type_short(self):
         return EVENT_TYPES_SHORT[self.mars_event_type]
+
 
     def __str__(self):
         if self.distance is not None and self.baz is not None:
@@ -274,6 +306,38 @@ class Event:
         return string.format(**dict(inspect.getmembers(self)))
 
 
+    def _set_file_paths(self, wf_type=constants.DEFAULT_WAVFORM_TYPE):
+        
+        self.event_dir = pjoin(self.dir_cache, self.name)
+        
+        self.waveform_dir = pjoin(
+            self.event_dir, constants.PRE_COMPUTE_WAVEFORM_DIR)
+        
+        self.spectra_dir = pjoin(
+            self.event_dir, constants.PRE_COMPUTE_SPECTRA_DIR)
+        
+        self.filterbank_dir = pjoin(
+            self.event_dir, constants.PRE_COMPUTE_FILTERBANK_DIR)
+        
+        # origin_path = pjoin(event_dir, 'origin_id.txt')
+        
+        self.metadata_dir = pjoin(
+            self.event_dir, constants.PRE_COMPUTE_METADATA_DIR)
+        
+        self.metadata_path = pjoin(
+            self.metadata_dir,
+            constants.EVENT_METADATA_PRE_COMPUTE_JSON_FILE.format(self.name))
+        
+        self.VBB_path = pjoin(
+            self.waveform_dir, constants.VBB_FILE_TEMPLATE.format(wf_type))
+        self.VBB100_path = pjoin(
+            self.waveform_dir, constants.VBB100_FILE_TEMPLATE.format(wf_type))
+        self.SP_path = pjoin(
+            self.waveform_dir, constants.SP_FILE_TEMPLATE.format(wf_type))
+        
+        self.is_file_path_set = True
+        
+        
     def load_distance_manual(self,
                              fnam_csv: str,
                              overwrite=False) -> None:
@@ -409,8 +473,10 @@ class Event:
         
         # print("ev {}: setting plot parameters".format(self.name))
         
+        self.plot_parameters = dict(filterbanks=dict(), spectra=dict())
+        
         # filterbanks setting per event
-        self.plot_parameters['filterbanks'] = dict()
+        # spectra setting per event
         
         # defaults
         fmax_LF = 8.0
@@ -579,38 +645,43 @@ class Event:
                     print("add_rotated_traces: cannot select channel {} in "\
                         "SP".format(chan))
     
-    def read_waveforms(self,
-                       inv: obspy.Inventory,
-                       sc3dir: str,
-                       event_tmp_dir='./events',
-                       wf_type: str = 'RAW', # RAW, DEGLITCHED, DENOISED
-                       kind: str = 'DISP',
-                       fmin_SP: float = 0.5,
-                       fmin_VBB: float = 1.0 / 30.0,
-                       t_pad_VBB: float = 300.0,
-                       station: str='ELYSE',
-                       location_code: str='00',
-                       remove_response: bool=True) -> None:
+    
+    def read_waveforms(
+        self,
+        inv: obspy.Inventory,
+        sc3dir,
+        event_tmp_dir=constants.EVENT_PRE_COMPUTE_DIR,
+        wf_type=constants.DEFAULT_WAVFORM_TYPE,
+        kind=constants.DEFAULT_WAVFORM_KIND,
+        fmin_SP=constants.WAVEFORM_READ_SP_FMIN,
+        fmin_VBB=constants.WAVEFORM_READ_VBB_FMIN,
+        t_pad_VBB=constants.WAVEFORM_READ_T_PAD_VBB,
+        station=constants.DEFAULT_STATION_NAME,
+        location_code=constants.DEFAULT_LOCATION_CODE,
+        remove_response=True):
+        
         """
         Wrapper to check whether local copy of corrected waveform exists and
         read it from sc3dir otherwise (and create local copy)
+        
         :param inv: Obspy.Inventory to use for instrument correction
         :param sc3dir: path to data, in SeisComp3 directory structure
         :param kind: 'DISP', 'VEL' or 'ACC'. Note that many other functions
                      expect the data to be in displacement
+        
         """
 
+        self._set_file_paths(wf_type=wf_type)
+        
         if not self.read_data_local(
-            wf_type, dir_cache=event_tmp_dir, station=station, 
-            location_code=location_code):
+            wf_type, station=station, location_code=location_code):
             
             print("ev {}: no local copy of waveform found, reading from SDS "\
                 "archive".format(self.name))
             
-            self.read_data_from_sc3dir(inv, sc3dir, wf_type, kind,
-                                       fmin_SP=fmin_SP,
-                                       fmin_VBB=fmin_VBB,
-                                       tpre_VBB=t_pad_VBB)
+            self.read_data_from_sc3dir(
+                inv, sc3dir, wf_type, kind, fmin_SP=fmin_SP, fmin_VBB=fmin_VBB,
+                tpre_VBB=t_pad_VBB)
             
             self.write_data_local(wf_type, dir_cache=event_tmp_dir)
 
@@ -626,46 +697,48 @@ class Event:
         
 
     def read_data_local(
-        self, wf_type: str, dir_cache: str='events', station: str='ELYSE',
-        location_code: str='00') -> bool:
+        self, 
+        wf_type: str,
+        station: str=constants.DEFAULT_STATION_NAME, 
+        location_code: str=constants.DEFAULT_LOCATION_CODE) -> bool:
 
         """
         Read waveform data from local cache structure
+        
         :param dir_cache: path to local cache
         :return: True if waveform was found in local cache
+        
         """
         
-        event_path = pjoin(dir_cache, "{}".format(self.name))
-        waveform_path = pjoin(event_path, 'waveforms')
-        origin_path = pjoin(event_path, 'origin_id.txt')
-        
+        if not self.is_file_path_set:
+            self._set_file_paths(wf_type=wf_type)
+
         success = False
-
-        VBB_path = pjoin(waveform_path, 'waveforms_VBB_%s.mseed' % wf_type)
-        VBB100_path = pjoin(waveform_path, 'waveforms_VBB100_%s.mseed' % wf_type)
-        SP_path = pjoin(waveform_path, 'waveforms_SP_%s.mseed' % wf_type)
-
-        if len(glob(origin_path)) > 0:
+        
+        if len(glob(self.metadata_path)) > 0:
             
-            with open(origin_path, 'r') as f:
-                origin_local = f.readline().strip()
-            
-            if origin_local == self.origin_publicid:
+            with open(self.metadata_path, 'r') as f_event_metadata:
+                self.event_metadata = json.load(f_event_metadata)
                 
-                if len(glob(VBB_path)):
-                    self.waveforms_VBB = obspy.read(VBB_path)
+                # origin_local = f.readline().strip()
+                origin_id_local = self.event_metadata['event']['origin_id']
+            
+            if origin_id_local == self.origin_publicid:
+                
+                if len(glob(self.VBB_path)):
+                    self.waveforms_VBB = obspy.read(self.VBB_path)
                     success = True
                 else:
                     self.waveforms_VBB = None
 
-                if len(glob(VBB100_path)):
-                    self.waveforms_VBB100 = obspy.read(VBB100_path)
+                if len(glob(self.VBB100_path)):
+                    self.waveforms_VBB100 = obspy.read(self.VBB100_path)
                     success = True
                 else:
                     self.waveforms_VBB100 = None
 
-                if len(glob(SP_path)):
-                    self.waveforms_SP = obspy.read(SP_path)
+                if len(glob(self.SP_path)):
+                    self.waveforms_SP = obspy.read(self.SP_path)
                     success = True
                 else:
                     self.waveforms_SP = None
@@ -674,70 +747,79 @@ class Event:
 
 
     def write_data_local(
-        self, wf_type: str, dir_cache: str='events', station: str='ELYSE',
-        location_code: str='00'):
+        self, 
+        wf_type: str, 
+        dir_cache: str=constants.EVENT_PRE_COMPUTE_DIR, 
+        station: str=constants.DEFAULT_STATION_NAME, 
+        location_code: str=constants.DEFAULT_LOCATION_CODE):
 
         """
         Store waveform data in local cache structure
-        @TODO: Save parameters (kind, filter) into file name
+        TODO(fab): store metadata as SNCL, filter params, plot params
+        
         :param dir_cache: path to local cache
         :return:
+        
         """
         
-        # NOTE(fab): these path definitions are redundant
-        event_path = pjoin(dir_cache, "{}".format(self.name))
-        waveform_path = pjoin(event_path, 'waveforms')
+        if not self.is_file_path_set:
+            self._set_file_paths(wf_type=wf_type)
         
-        # this is a left-over from branch fab
-        # waveform_path = pjoin(
-        #     event_path, 'waveforms', "{}.{}".format(station, location_code))
+        makedirs(self.waveform_dir, exist_ok=True)
+        makedirs(self.metadata_dir, exist_ok=True)
         
-        origin_path = pjoin(event_path, 'origin_id.txt')
+        # write JSON w/ origin_id_local
+        self.event_metadata['event']['origin_id'] = self.origin_publicid
         
-        makedirs(waveform_path, exist_ok=True)
-
-        with open(origin_path, 'w') as f:
-            f.write(self.origin_publicid)
+        with io.open(self.metadata_path, 'w', encoding='utf-8') as of:
+            json.dump(self.event_metadata, of, indent=True, sort_keys=True)
         
         if self.waveforms_VBB is not None and len(self.waveforms_VBB) > 0:
             self.waveforms_VBB.write(
                 pjoin(
-                    waveform_path, 'waveforms_VBB_%s.mseed' % wf_type), 
-                    format='MSEED')
+                    self.waveform_dir, 
+                    constants.VBB_FILE_TEMPLATE.format(wf_type)), 
+                format='MSEED')
                 
         if self.waveforms_VBB100 is not None and len(self.waveforms_VBB100) > 0:
             self.waveforms_VBB100.write(
                 pjoin(
-                    waveform_path, 'waveforms_VBB100_%s.mseed' % wf_type), 
+                    self.waveform_dir, 
+                    constants.VBB100_FILE_TEMPLATE.format(wf_type)), 
                     format='MSEED')
 
         if self.waveforms_SP is not None and len(self.waveforms_SP) > 0:
             self.waveforms_SP.write(
                 pjoin(
-                    waveform_path, 'waveforms_SP_%s.mseed' % wf_type), 
+                    self.waveform_dir, 
+                    constants.SP_FILE_TEMPLATE.format(wf_type)), 
                     format='MSEED')
 
 
-    def read_data_from_sc3dir(self,
-                              inv: obspy.Inventory,
-                              sc3dir: str,
-                              wf_type: str,
-                              kind: str,
-                              fmin_SP=0.5,
-                              fmin_VBB=1. / 30.,
-                              tpre_SP: float = 100,
-                              tpre_VBB: float = 1200.0,
-                              station: str='ELYSE',
-                              location_code: str='00',
-                              remove_response: bool=True) -> None:
+    def read_data_from_sc3dir(
+        self,
+        inv: obspy.Inventory,
+        sc3dir: str,
+        wf_type: str,
+        kind: str,
+        fmin_SP=0.5,
+        fmin_VBB=1. / 30.,
+        tpre_SP: float = 100,
+        tpre_VBB: float = 1200.0,
+        station: str=constants.DEFAULT_STATION_NAME,
+        location_code: str=constants.DEFAULT_LOCATION_CODE,
+        remove_response: bool=True) -> None:
         """
         Read waveform data into event object
+        
         :param inv: obspy.Inventory object to use for instrument correction
         :param sc3dir: path to data, in SeisComp3 directory structure
-        :param wf_type: type of preprocessed data to load ('RAW', 'DEGLITCHED', 'DENOISED')
+        :param wf_type: type of preprocessed data to load 
+            ('RAW', 'DEGLITCHED', 'DENOISED')
         :param kind: Unit to correct waveform into ('DISP', 'VEL', 'ACC')
         :param tpre_SP: prefetch time for SP data (default: 100 sec)
         :param tpre_VBB: prefetch time for VBB data (default: 900 sec)
+        
         """
 
         if len(self.picks['noise_start']) > 0:
@@ -764,21 +846,24 @@ class Event:
                                        fmin_SP, fmin_VBB, tpre_SP, tpre_VBB,
                                        twin_start, twin_end)
 
-    def _read_data_from_sc3dir_raw(self,
-                              inv: obspy.Inventory,
-                              sc3dir: str,
-                              kind: str,
-                              fmin_SP: float,
-                              fmin_VBB: float,
-                              tpre_SP: float,
-                              tpre_VBB: float,
-                              twin_start: float,
-                              twin_end: float) -> None:
+
+    def _read_data_from_sc3dir_raw(
+        self,
+        inv: obspy.Inventory,
+        sc3dir: str,
+        kind: str,
+        fmin_SP: float,
+        fmin_VBB: float,
+        tpre_SP: float,
+        tpre_VBB: float,
+        twin_start: float,
+        twin_end: float) -> None:
+        
+        # default station name (RAW waveforms)
         station = 'ELYSE'
 
-        #
-        # Read SP
-        #
+        ## Read SP
+        
         # Try for 65.EH? (100sps SP)
         filenam_SP = 'XB.ELYSE.65.EH?.D.%04d.%03d'
         fnam_SP = create_fnam_event(
@@ -789,21 +874,20 @@ class Event:
             # Use SP waveforms only if 65.EH? exists, not otherwise (we
             # don't need 20sps SP data)
             self.waveforms_SP = read_data(fnam_SP, inv=inv, kind=kind,
-                                          twin=[twin_start - tpre_SP,
-                                                twin_end + tpre_SP],
-                                          fmin=fmin_SP)
-            if self.waveforms_SP is not None and \
-                    len(self.waveforms_SP) == 0:
+                twin=[twin_start - tpre_SP, twin_end + tpre_SP], fmin=fmin_SP)
+            
+            if self.waveforms_SP is not None and len(self.waveforms_SP) == 0:
                 self.waveforms_SP = None
 
-        #
-        # Read VBB 100sps
-        #
+        ## Read VBB 100sps
+        
         # Try for 00.HH? (100sps VBB)
         filenam_VBB100 = 'XB.ELYSE.00.HH?.D.%04d.%03d'
+        
         fnam_VBB100 = create_fnam_event(
             filenam_inst=filenam_VBB100, station=station,
             sc3dir=sc3dir, time=self.picks['start'])
+        
         self.waveforms_VBB100 = read_data(fnam_VBB100, inv=inv,
                                        kind=kind,
                                        fmin=fmin_VBB,
@@ -814,9 +898,8 @@ class Event:
                 len(self.waveforms_VBB100) != 3:
             self.waveforms_VBB100 = None
 
-        #
-        # Read VBB
-        #
+        ## Read VBB
+        
         success_VBB = False
 
         # Try for 02.BH? (20sps VBB)
@@ -831,9 +914,7 @@ class Event:
                                         twin=[twin_start - tpre_VBB,
                                                 twin_end + tpre_VBB])
         
-        if self.waveforms_VBB is not None and \
-                len(self.waveforms_VBB) == 3:
-
+        if self.waveforms_VBB is not None and len(self.waveforms_VBB) == 3:
             success_VBB = True
 
         if not success_VBB:
@@ -918,6 +999,7 @@ class Event:
         fnam_VBB = create_fnam_event(
             filenam_inst='XB.ELYDG.00.BH?.D.%04d.%03d', station='ELYDG',
             sc3dir=sc3dir, time=self.picks['start'])
+        
         if len(glob(fnam_VBB)) % 3 == 0:
             self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
                                            kind=kind,
@@ -931,6 +1013,7 @@ class Event:
         if self.waveforms_VBB is None:
             print('Deglitched data not found on day %s (%s)' %
                   (self.picks['start'], fnam_VBB))
+
 
     def _read_data_from_sc3dir_denoised(self,
                               inv: obspy.Inventory,
@@ -952,6 +1035,7 @@ class Event:
         fnam_VBB = create_fnam_event(
             filenam_inst='XB.ELYDL.03.BH?.D.%04d.%03d', station='ELYDL',
             sc3dir=sc3dir, time=self.picks['start'])
+        
         if len(glob(fnam_VBB)) % 3 == 0:
             self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
                                            kind=kind,
@@ -1015,16 +1099,20 @@ class Event:
 
         """
         Add spectra to event object.
+        
         Spectra are stored in dictionaries
             event.spectra for VBB
             event.spectra_SP for SP
+        
         Spectra are calculated separately for time windows "noise", "all",
         "P" and "S". If any of the necessary picks is missing, this entry is
         set to None.
+        
         :param winlen_sec: window length for Welch estimator
         :param detick_nfsamp: How many samples (in f-domain) to smoothen around
                               1 Hz
         :param padding: Zeropad signal by factor of 2 to smoothen spectra?
+        
         """
 
         # print("calculating spectra for event {}, {}/Q{}, wf {}, smprate "\
@@ -1035,8 +1123,11 @@ class Event:
             raise RuntimeError('waveforms not read in Event object\n' +
                                'Call Event.read_waveforms() first.')
 
-        event_path = pjoin("./events", "{}".format(self.name))
-        spectra_path = pjoin(event_path, 'spectra')
+        # event_path = pjoin("./events", "{}".format(self.name))
+        # spectra_path = pjoin(event_path, 'spectra')
+        
+        event_path = self.event_dir
+        spectra_path = self.spectra_dir
         
         # self.wf_type, smprate, orientation
         orientation = "ZRT" if rotate else "ZNE" 

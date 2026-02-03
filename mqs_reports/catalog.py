@@ -10,8 +10,10 @@ Marsquake service Mars event catalogue
     Luca Scarabello (luca.scarabello@sed.ethz.ch), 2024
     Savas Ceylan (savas.ceylan@eaps.ethz.ch), 2024
     Fabian Euchner (fabian.euchner@sed.ethz.ch), 2024
+    
 :license:
     GPLv3
+    
 """
 
 import os 
@@ -39,7 +41,9 @@ import psycopg2 as psycopg
 from scipy import stats
 from tqdm import tqdm
 
+
 from mqs_reports.annotations import Annotations
+import mqs_reports.constants as constants
 
 from mqs_reports.event import Event, EVENT_TYPES_PRINT, EVENT_TYPES_SHORT, \
     EVENT_TYPES, RADIUS_MARS, CRUST_VS, CRUST_VP
@@ -72,9 +76,14 @@ LOCATION_QUALITY_SCHEMA = \
 
 
 class Catalog:
+    """
+    Init catalog by reading from JSON catalog input file.
+    """
+    
+    
     def __init__(self,
                  events=None,
-                 fnam_event='catalog.json',
+                 fnam_event=constants.DEFAULT_JSON_INPUT_FILE,
                  config_file='',
                  db=False,
                  json=True,
@@ -85,10 +94,14 @@ class Catalog:
                  endtime=None):
         """
         Class to hold catalog of multiple events. Initialized from
-        dictionary with Events or QuakeML with Mars extensions.
+        summary JSON file:
+
+        Deprecated: init from dictionary with Events,
+            QuakeML with Mars extensions, seiscomp DB.
+
         :param events: dictionary of events. If not set, the events are read
                        from QuakeML file
-        :param event_tmp_dir: temporary directory for waveform files
+        :param event_tmp_dir: temporary directory for event/waveform files
         :param fnam_event: Path to JSON or QuakeML file
         :param quality: Desired event quality
         :param type_select: Desired event types. Either direct type or
@@ -155,6 +168,10 @@ class Catalog:
                         "JSON".format(len(events_from_source)))
                     
                 else:
+                    
+                    raise NotImplementedError(
+                        "reading from QuakeML is deprecated, use JSON")
+                
                     print("reading catalog from QuakeML")
                     events_from_source = read_QuakeML_BED(
                         fnam=fnam_event, event_type=self.types, quality=quality,
@@ -165,6 +182,9 @@ class Catalog:
                 
             else:
                 
+                raise NotImplementedError(
+                        "reading from DB is deprecated, use JSON")
+            
                 config = configuration.Configuration()
                 config.load(config_file)
     
@@ -192,11 +212,14 @@ class Catalog:
                 self.events.extend(events)
         pass
 
+
     def __len__(self):
         return len(self.events)
 
+
     def __iter__(self):
         return list(self.events).__iter__()
+
 
     def __add__(self, other):
         if isinstance(other, Event):
@@ -205,6 +228,7 @@ class Catalog:
             raise TypeError
         events = self.events + other.events
         return self.__class__(events=events)
+
 
     def __str__(self, extended=False):
         out = str(len(self.events)) + ' Events(s) in Catalog:\n'
@@ -231,15 +255,32 @@ class Catalog:
         out += '\n'
         return out
 
-    def origin_vs_start_time(self):
-        dt = [(ev.name, utct(ev.picks['start']) - ev.origin_time)
-              for ev in self]
 
-        dt = sorted(dt, key=lambda x: x[1], reverse=True)
-
-        for item in dt:
-            print(item[0], item[1])
-
+    def read_waveforms(
+        self,
+        inv,
+        sc3dir: str,
+        event_tmp_dir=constants.EVENT_PRE_COMPUTE_DIR,
+        wf_type: str=constants.DEFAULT_WAVFORM_TYPE,
+        kind: str=constants.DEFAULT_WAVFORM_KIND) -> None:
+        
+        """
+        Wrapper to check whether local copy of corrected waveform exists and
+        read it from sc3dir otherwise (and create local copy)
+        
+        :param inv: Obspy.Inventory to use for instrument correction
+        :param sc3dir: path to data, in SeisComp3 directory structure
+        :param kind: 'DISP', 'VEL' or 'ACC'. Note that many other functions
+                     expect the data to be in displacement
+        
+        """
+        
+        for event in tqdm(self, file=stdout):
+            event.read_waveforms(
+                inv=inv, wf_type=wf_type, kind=kind, sc3dir=sc3dir, 
+                event_tmp_dir=event_tmp_dir)
+    
+    
     def select(self,
                name: Union[tuple, list, str] = None,
                event_type: Union[tuple, list, str] = None,
@@ -247,13 +288,14 @@ class Catalog:
                distmin: float = None,
                distmax: float = None,
                starttime: utct = None,
-               endtime: utct = None,
-               ):
+               endtime: utct = None):
         """
         Return new Catalog object only with the events that match the given
         criteria (e.g. all with name=="S026?a").
+        
         Criteria can either be given as string with wildcards or as tuple of
         allowed values.
+        
         :param name: Name of the event ("SXXXXy")
         :param event_type: two-letter acronym "BB", "LF", "HF", "24", "VF, "SF"
         :param quality: A to D
@@ -262,9 +304,11 @@ class Catalog:
         :param starttime: minimum origin time (in UTC)
         :param endtime: maximum origin time (in UTC)
         :return:
+        
         """
         
         events = []
+        
         for event in self:
             # skip event if any given criterion is not matched
             if name is not None:
@@ -310,12 +354,9 @@ class Catalog:
                     continue
 
             events.append(event)
+            
         return self.__class__(events=events)
 
-    def load_distances(self, fnam_csv, overwrite=False):
-        for event in self:
-            event.load_distance_manual(fnam_csv,
-                                       overwrite=overwrite)
 
     def calc_spectra(
         self, winlen_sec: float, detick_nfsamp=0, padding=False) -> None:
@@ -324,13 +365,16 @@ class Catalog:
         Spectra are stored in dictionaries
             event.spectra for VBB
             event.spectra_SP for SP
+        
         Spectra are calculated separately for time windows "noise", "all",
         "P" and "S". If any of the necessary picks is missing, this entry is
         set to None.
+        
         :param winlen_sec: window length for Welch estimator
         :param detick_nfsamp: How many samples (in f-domain) to smoothen around
                               1 Hz
         :param padding: Zeropad signal by factor of 2 to smoothen spectra?
+        
         """
         for event in tqdm(self, file=stdout):
 
@@ -358,42 +402,49 @@ class Catalog:
                 instrument = 'VBB'
 
             try:
-                event.calc_spectra(winlen_sec=winlen_sec,
-                                   detick_nfsamp=detick_nfsamp,
-                                   padding=padding,
-                                   instrument=instrument)
+                event.calc_spectra(
+                    winlen_sec=winlen_sec, detick_nfsamp=detick_nfsamp,
+                    padding=padding, instrument=instrument)
+                
             except ValueError as e:
                 print('Problem with event' + event.name)
                 raise e
 
+
+    def origin_vs_start_time(self):
+        dt = [(ev.name, utct(ev.picks['start']) - ev.origin_time)
+              for ev in self]
+
+        dt = sorted(dt, key=lambda x: x[1], reverse=True)
+
+        for item in dt:
+            print(item[0], item[1])
+            
+            
+    def load_distances(self, fnam_csv, overwrite=False):
+        for event in self:
+            event.load_distance_manual(fnam_csv, overwrite=overwrite)
+            
+            
     def save_magnitudes(self, fnam, version='Giardini2020', verbose=False):
         mags = []
         for event in self:
-            mags.append([event.name,
-                         event.magnitude(mag_type='mb_P', version=version, verbose=verbose),
-                         event.magnitude(mag_type='mb_S', version=version, verbose=verbose),
-                         event.magnitude(mag_type='m2.4', version=version, verbose=verbose),
-                         event.magnitude(mag_type='MFB', version=version, verbose=verbose)
-                         ])
+            mags.append([
+                event.name,
+                event.magnitude(
+                    mag_type='mb_P', version=version, verbose=verbose),
+                event.magnitude(
+                    mag_type='mb_S', version=version, verbose=verbose),
+                event.magnitude(
+                    mag_type='m2.4', version=version, verbose=verbose),
+                event.magnitude(
+                    mag_type='MFB', version=version, verbose=verbose)])
+            
         np.savetxt(fnam, mags, fmt=('%s'))
 
-    def read_waveforms(self,
-                       inv,
-                       sc3dir: str,
-                       event_tmp_dir='./events',
-                       wf_type: str = 'RAW', # RAW, DEGLITCHED, DENOISED
-                       kind: str = 'DISP') -> None:
-        """
-        Wrapper to check whether local copy of corrected waveform exists and
-        read it from sc3dir otherwise (and create local copy)
-        :param inv: Obspy.Inventory to use for instrument correction
-        :param sc3dir: path to data, in SeisComp3 directory structure
-        :param kind: 'DISP', 'VEL' or 'ACC'. Note that many other functions
-                     expect the data to be in displacement
-        """
-        for event in tqdm(self, file=stdout):
-            event.read_waveforms(inv=inv, wf_type=wf_type, kind=kind,
-                                 sc3dir=sc3dir, event_tmp_dir=event_tmp_dir)
+
+   
+
 
     def plot_pickdiffs(
          self, pick1_X, pick2_X, pick1_Y, pick2_Y, vX=None, vY=None, fig=None,
@@ -516,6 +567,7 @@ class Catalog:
 
         if show:
             plt.show()
+
 
     def plot_24_alignment(
          self, pre_time=120., post_time=120., fmax_filt=2.7, fmin_filt=2.1,
@@ -713,6 +765,7 @@ class Catalog:
         else:
             return fig
 
+
     def plot_HF_spectra(self, SNR=2., tooltip=False, component='Z', fmin=0.7,
                         quality='B', event_type=['2.4_HZ', 'HIGH_FREQUENCY',
                                                  'VERY_HIGH_FREQUENCY'],
@@ -837,6 +890,7 @@ class Catalog:
         else:
             return fig
 
+
     def plot_amplitude_PgSg(
          self,
          colors={'2.4_HZ': 'C1', 'HIGH_FREQUENCY': 'C2',
@@ -912,6 +966,7 @@ class Catalog:
             plt.show()
         else:
             return fig
+
 
     def plot_snr_dist(
             self, mag_type='m2.4',
@@ -1070,6 +1125,7 @@ class Catalog:
         else:
             return fig
 
+
     def plot_distance_distribution_cumulative(self, fig=None, label=None,
                                               show=True):
 
@@ -1091,6 +1147,7 @@ class Catalog:
             plt.show()
         else:
             return fig
+
 
     def plot_distance_distribution_density(
          self, fig=None, fnam_txt_out=None,
@@ -1145,6 +1202,7 @@ class Catalog:
             plt.show()
         else:
             return fig
+
 
     def make_report(self,
                     dir_out: str = 'reports',
@@ -1305,6 +1363,7 @@ class Catalog:
         fig.savefig('spectra_many_events.pdf')
         plt.show()
 
+
     def plot_many_spectra(self, ax, ax_all, df_mute, fits, nevents, nrows,
                           source=True, iaxoff=0):
 
@@ -1454,12 +1513,11 @@ class Catalog:
                 iax += 1
                 ievent += 1
 
+
     def get_event_count_table(self, style='dataframe') -> str:
         """
         Create HTML event count table for catalog
         """
-
-        
 
         data = np.zeros((len(EVENT_TYPES), 5), dtype=int)
 
@@ -1482,6 +1540,7 @@ class Catalog:
             return df.to_latex(index=False)
         else:
             raise ValueError()
+
 
     def plot_polarisation_analysis(self, dir_out):
         """
@@ -1507,6 +1566,7 @@ class Catalog:
                     except ValueError as e:
                         print('Problem with Polarization plot for event %s' % event.name)
                         print(e)
+
 
 def make_report_check_exists(event, dir_out, annotations):
     fnam_report = dict()

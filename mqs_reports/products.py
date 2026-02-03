@@ -49,6 +49,8 @@ from mqs_reports.utils import add_orientation_to_stream_info
 from mqs_reports.utils import envelope_smooth
 from mqs_reports.utils import uncertainty_from_pdf
 
+# from marsprocessingtools import catalog as marscatalog
+
 sns.set_theme(style="darkgrid")
 
 # original seaborn color_palette() used in older versions
@@ -99,9 +101,28 @@ COLOR_SPECTRA_BOTTOM_F_CENTER = "crimson"
 # Davy's grey
 COLOR_SPECTRA_TOP_TEXT_BOXES = "#555555"
 
+SPECTRA_FIGURE_SIZE = (20, 12)
+SPECTRA_FIGURE_POSITIONS = dict(
+    top=0.911, bottom=0.097, left=0.049, right=0.972, hspace=0.2, 
+    wspace=0.116)
+            
+SPECTRA_TEXT_BOXES_XCOORD = {
+    'type_quality': 0.05,
+    'origin_time': 0.15,
+    'raw_denoised_deglitched': 0.30,
+    'streamid_lf': 0.5,
+    'stramid_hf': 0.7,
+    'filtercode': 0.85}
+
 SPECTRA_TEXT_BOXES_YCOORD = 1.05
 SPECTRA_TEXT_BOXES_PADDING = 0.2
 SPECTRA_TEXT_BOXES_FACECOLOR = "white"
+
+SPECTRA_TEXT_BOX_PARAMS = {
+    'boxstyle': 'square', 
+    'facecolor': 'white', 
+    'edgecolor': COLOR_SPECTRA_TOP_TEXT_BOXES, 
+    'pad': SPECTRA_TEXT_BOXES_PADDING}
 
 SPECTRA_PLOT_TOP_XLABEL = "Time after origin time [seconds]"
 SPECTRA_PLOT_TOP_YLABEL = "Displacement ({}) [m]"
@@ -303,7 +324,7 @@ def plot_spectra(
                 max(fitting_parameters_pool.get_value("E", 'fmaxS'),
                     fitting_parameters_pool.get_value("N", 'fmaxS')))
 
-
+        # get stream from pre-computed waveforms
         if instrument == 'VBB':
             stream = fitter.event.waveforms_VBB.copy()
         elif instrument == 'SP':
@@ -336,9 +357,12 @@ def plot_spectra(
 
         print("plotting spectra for event {}".format(event.name))
         
+        # get trace for plotting for requested component (orientation)
         for component in (['R','T'] if rotate else ['Z','N','E']):
-
-            tr = stream.select(channel='*'+component)[0].copy()
+            
+            channel_name = "{}{}".format('*', component)
+            
+            tr = stream.select(channel=channel_name)[0].copy()
 
             fnam = plot_filename(fitter.event, component)
 
@@ -360,24 +384,17 @@ def plot_spectra(
             print("products.plot_spectra: create figure for plot file {}".format(
                 fnam))
             
-            # TODO(fab): get rid of magic numbers
-            fig = plt.figure(figsize=(20,12))
-            fig.subplots_adjust(top=0.911,  bottom=0.097,
-                                left=0.049, right=0.972,
-                                hspace=0.2, wspace=0.116)
+            fig = plt.figure(figsize=SPECTRA_FIGURE_SIZE)
+            fig.subplots_adjust(**SPECTRA_FIGURE_POSITIONS)
             
             gs = fig.add_gridspec(2, 2)
             ax1 = fig.add_subplot(gs[0, :])
             ax2 = fig.add_subplot(gs[1, 0])
             ax3 = fig.add_subplot(gs[1, 1])
-
-            # adjusted plot ttile
-            # fig.suptitle(
-            #     f'Event={fitter.event.name} LQ={fitter.event.quality} "\
-            #     "Type={fitter.event.mars_event_type_short} "\
-            #     "Component={component} {LF_streaminfo} {HF_streaminfo}')
-            
-            streaminfo_plot = dict(LF=None, HF=None)
+    
+            streaminfo_plot = dict(
+                LF=None, HF=None, event_name=event.name, wf_type=wf_type,
+                origin_time_screen=event.origin_time_screen)
             
             if len(LF_streaminfo) > 0:
                 LF_streaminfo_with_orientation = add_orientation_to_stream_info(
@@ -392,12 +409,6 @@ def plot_spectra(
                 streaminfo_plot["HF"] = HF_streaminfo
                 streaminfo_plot["HF_orientation"] = \
                     HF_streaminfo_with_orientation
-                
-            # TODO(fab): print filter information
-            # fig.suptitle("Event {} {}/Q{} {} {}".format(
-            #         fitter.event.name, fitter.event.mars_event_type_short, 
-            #         fitter.event.quality, LF_streaminfo_with_orientation, 
-            #         HF_streaminfo_with_orientation), fontsize='x-large')
             
             fig.suptitle(
                 "Event {}".format(fitter.event.name), weight='bold', 
@@ -406,6 +417,7 @@ def plot_spectra(
             _plot_spectra_top(
                 fitter, ax1, tr, component, spectral_windows,
                 fitting_parameters_pool, streaminfo_plot)
+            
             _plot_spectra_bottom(
                 ax2, ax3, fitter, streaminfo_plot, component,
                 fitting_parameters_pool, results, wf_type)
@@ -441,6 +453,7 @@ def _plot_spectra_top(
 
     to_tr_time = lambda time_str: UTCDateTime(time_str) - tr.stats.starttime
 
+    # get minimun/maximum from trace for noise, P, S boxes
     data_min = np.min(tr.data)
     data_max = np.max(tr.data)
 
@@ -452,6 +465,7 @@ def _plot_spectra_top(
     s_end       = to_tr_time(windows['S_spectral_end'])
 
     # plot filtered trace
+    # NOTE: axes range is automatic
     trace_filtered = ax.plot(
         tr.times(), tr.data, color=COLOR_SPECTRA_FILTERED_TRACE, linestyle='-',
         label="filtered trace")
@@ -530,35 +544,49 @@ def _plot_spectra_top(
             xmin=S-0.5*width, xmax=S+0.5*width, facecolor=COLOR_SPECTRA_S_PHASE, 
             alpha=0.3, label="S phase")
     
-    # top annotations (type/quality, LF, HF, filter)
-    box_params = {'boxstyle': 'square', 'facecolor': 'white', 
-        'edgecolor': COLOR_SPECTRA_TOP_TEXT_BOXES, 
-        'pad': SPECTRA_TEXT_BOXES_PADDING}
-    
-    ax.text(0.05, SPECTRA_TEXT_BOXES_YCOORD, 
+    # top subtitle text boxes (type/quality, OT, wf type, LF, HF, filter)
+    ax.text(SPECTRA_TEXT_BOXES_XCOORD['type_quality'], 
+        SPECTRA_TEXT_BOXES_YCOORD, 
         "{}/Q{}".format(fitter.event.mars_event_type_short, 
         fitter.event.quality),
         verticalalignment='center', horizontalalignment='center',
-        transform=ax.transAxes, bbox=box_params,
+        transform=ax.transAxes, bbox=SPECTRA_TEXT_BOX_PARAMS,
         color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
     
+    ax.text(SPECTRA_TEXT_BOXES_XCOORD['origin_time'], 
+        SPECTRA_TEXT_BOXES_YCOORD, 
+        "OT: {}".format(streaminfo_plot["origin_time_screen"]),
+        verticalalignment='center', horizontalalignment='center',
+        transform=ax.transAxes, bbox=SPECTRA_TEXT_BOX_PARAMS,
+        color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
+    
+    ax.text(SPECTRA_TEXT_BOXES_XCOORD['raw_denoised_deglitched'], 
+        SPECTRA_TEXT_BOXES_YCOORD, 
+        "{} waveforms".format(streaminfo_plot["wf_type"].lower()),
+        verticalalignment='center', horizontalalignment='center',
+        transform=ax.transAxes, bbox=SPECTRA_TEXT_BOX_PARAMS,
+        color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
+        
     if streaminfo_plot["LF"] is not None:
-        ax.text(0.3, SPECTRA_TEXT_BOXES_YCOORD, 
+        ax.text(SPECTRA_TEXT_BOXES_XCOORD['streamid_lf'], 
+            SPECTRA_TEXT_BOXES_YCOORD, 
             "{}".format(streaminfo_plot["LF_orientation"]),
             verticalalignment='center', horizontalalignment='center',
-            transform=ax.transAxes, bbox=box_params,
+            transform=ax.transAxes, bbox=SPECTRA_TEXT_BOX_PARAMS,
             color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
     
     if streaminfo_plot["HF"] is not None:
-        ax.text(0.55, SPECTRA_TEXT_BOXES_YCOORD, 
+        ax.text(SPECTRA_TEXT_BOXES_XCOORD['streamid_hf'], 
+            SPECTRA_TEXT_BOXES_YCOORD, 
             "{}".format(streaminfo_plot["HF_orientation"]),
             verticalalignment='center', horizontalalignment='center',
-            transform=ax.transAxes, bbox=box_params,
+            transform=ax.transAxes, bbox=SPECTRA_TEXT_BOX_PARAMS,
             color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
     
-    ax.text(0.8, SPECTRA_TEXT_BOXES_YCOORD, "filter:",
+    ax.text(SPECTRA_TEXT_BOXES_XCOORD['filtercode'], SPECTRA_TEXT_BOXES_YCOORD, 
+        "filter:",
         verticalalignment='center', horizontalalignment='center',
-        transform=ax.transAxes, bbox=box_params,
+        transform=ax.transAxes, bbox=SPECTRA_TEXT_BOX_PARAMS,
         color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
     
 

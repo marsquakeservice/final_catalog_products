@@ -11,8 +11,10 @@ Marsquake service Mars event catalogue
     Luca Scarabello (luca.scarabello@sed.ethz.ch), 2024
     Savas Ceylan (savas.ceylan@eaps.ethz.ch), 2024
     Fabian Euchner (fabian.euchner@sed.ethz.ch), 2024
+    
 :license:
     GPLv3
+    
 """
 
 import base64 
@@ -480,6 +482,7 @@ def read_JSON_Events(
             event_names_no_good_distance_type.append(info_tuple)
         
         origin_time_iso = "{0}T{1}Z".format(*ev_info['origin_time'].split())
+        sso_origin_time = ev_info['origin_time_iso']
         
         the_lat = ev_info['latitude']
         the_lon = ev_info['longitude']
@@ -493,6 +496,16 @@ def read_JSON_Events(
         
         sso_origin_time = None
         
+        try:
+            sso_origin_time = \
+                ev_info['location'][pref_dist_type]['origin_time_sum']
+            
+        except Exception:
+            sso_origin_time = ev_info['origin_time_iso']
+            
+        if sso_origin_time is None:
+            sso_origin_time = "{}T{}Z".format(ev_info['origin_time'].split())
+
         # always read 'meta' pick info
         for phase_code, phase_data in \
             ev_info['pick_times_all']['meta'].items():
@@ -520,9 +533,6 @@ def read_JSON_Events(
             distance_pdf = np.asarray(
                 (distance_pdf_var, distance_pdf_prob), dtype=float)
             
-            sso_origin_time = \
-                ev_info['location'][pref_dist_type]['origin_time_sum']
-        
             for phase_code, phase_data in \
                 ev_info['pick_times_all'][pref_dist_type].items():
                 
@@ -534,6 +544,8 @@ def read_JSON_Events(
                     picks_methodid[phase_code] = ""
     
             # if GZ BAZ (only for info)
+            # TODO(fab): use get_baz method
+            gz_baz = None
             try:
                 gz_baz = ev_info['gz_baz']['value']['bazPolarisation']
 
@@ -549,7 +561,8 @@ def read_JSON_Events(
             origin_publicid=ev_info['preferred_origin_id'],
             mars_event_type=ev_info['mars_event_type'],
             quality=ev_info['location_quality'],
-            origin_time=origin_time_iso,
+            origin_time=sso_origin_time,
+            origin_time_screen=ev_info['origin_time'],
             latitude=the_lat,
             longitude=the_lon,
             sso_distance=sso_distance,
@@ -557,7 +570,8 @@ def read_JSON_Events(
             sso_origin_time=sso_origin_time,
             picks=picks,
             picks_sigma=picks_sigma,
-            picks_methodid=picks_methodid)
+            picks_methodid=picks_methodid,
+            baz=gz_baz)
 
         event_list.append(curr_event)
     

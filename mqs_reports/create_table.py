@@ -10,8 +10,10 @@ Marsquake service Mars event catalogue
     Luca Scarabello (luca.scarabello@sed.ethz.ch), 2024
     Savas Ceylan (savas.ceylan@eaps.ethz.ch), 2024
     Fabian Euchner (fabian.euchner@sed.ethz.ch), 2024
+    
 :license:
     GPLv3
+    
 """
 
 import glob
@@ -32,6 +34,8 @@ from tqdm import tqdm
 from fitter import Fitter
 from products import plot_filterbanks, plot_spectra
 
+import mqs_reports.constants as constants
+
 from mqs_reports.annotations import Annotations
 from mqs_reports.catalog import Catalog
 from mqs_reports.snr import calc_SNR, calc_stalta
@@ -41,8 +45,9 @@ from mqs_reports.utils import solify
 DIR_OUT_SPECT = "./spect/"
 #DIR_OUT_SPECT = "./spect.new/"
 
-# DIR_OUT_FILTERBANKS = "./filterbanks/"
-DIR_OUT_FILTERBANKS = "./filterbanks.new/"
+DIR_OUT_FILTERBANKS = "./filterbanks/"
+# DIR_OUT_FILTERBANKS = "./filterbanks.new/"
+
 
 def create_row_header(list):
     row = '    <tr>\n'
@@ -60,7 +65,9 @@ def create_row(list, event=None, fmts=None, extras=None):
     if event is None:
         row = '    <tr>\n'
     else:
-        row = '    <tr id="ev_row_type_%s_quality_%s_name_%s">\n' % (event.mars_event_type_short, event.quality, event.name)
+        row = '    <tr id="ev_row_type_%s_quality_%s_name_%s">\n' % (
+            event.mars_event_type_short, event.quality, event.name)
+    
     ind_string = '      '
     if extras is None:
         for li, fmt in zip(list, fmts):
@@ -738,7 +745,9 @@ if __name__ == '__main__':
         print("Read {} waveforms".format(args.data_type))
         
         catalog.read_waveforms(
-            inv=inv, wf_type=args.data_type, kind='DISP', sc3dir=args.sc3_dir)
+            inv=inv, wf_type=args.data_type, 
+            kind=constants.DEFAULT_WAVFORM_KIND, 
+            sc3dir=args.sc3_dir)
     
     normtypes = []
     for n in args.norm:
