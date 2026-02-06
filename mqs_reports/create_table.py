@@ -806,13 +806,15 @@ if __name__ == '__main__':
                 print("Calculate/plot spectra for {} waveforms (smprate {}, "\
                     "ZRT {})".format(args.data_type, smprate, rotate))
                 
-                # implicitly calls event.calc_spectra()
+                # implicitly calls fitter.swap_event) -> event.calc_spectra()
                 plot_spectra(
-                    fitter=fitter, fitting_parameters=fitting_parameters,
+                    fitter=fitter, 
+                    fitting_parameters=fitting_parameters,
                     fitting_parameters_defaults=fitting_parameters_defaults,
-                    dir_out=DIR_OUT_SPECT, winlen_sec=20.0, 
+                    dir_out=DIR_OUT_SPECT, 
                     wf_type=args.data_type,
-                    rotate=rotate, smprate=smprate, 
+                    rotate=rotate, 
+                    smprate=smprate, 
                     orientation=args.orientation,
                     force_products=args.force_products,
                     calculate_spectra=args.calc_spectra,

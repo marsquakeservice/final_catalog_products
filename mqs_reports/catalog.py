@@ -75,23 +75,24 @@ LOCATION_QUALITY_SCHEMA = \
     'http://quakeml.org/vocab/marsquake/1.0/MarsLocationQualityType#'
 
 
-class Catalog:
+class Catalog(object):
     """
     Init catalog by reading from JSON catalog input file.
+    
     """
     
-    
-    def __init__(self,
-                 events=None,
-                 fnam_event=constants.DEFAULT_JSON_INPUT_FILE,
-                 config_file='',
-                 db=False,
-                 json=True,
-                 quality=('A', 'B', 'C'),
-                 baz={},
-                 type_select='all',
-                 starttime=None,
-                 endtime=None):
+    def __init__(
+        self,
+        events=None,
+        fnam_event=constants.DEFAULT_JSON_INPUT_FILE,
+        config_file='',
+        db=False,
+        json=True,
+        quality=('A', 'B', 'C'),
+        baz={},
+        type_select='all',
+        starttime=None,
+        endtime=None):
         """
         Class to hold catalog of multiple events. Initialized from
         summary JSON file:
@@ -359,7 +360,10 @@ class Catalog:
 
 
     def calc_spectra(
-        self, winlen_sec: float, detick_nfsamp=0, padding=False) -> None:
+        self, 
+        winlen_sec=constants.SPECTRA_WELSH_WINDOW_LENGTH_SEC, 
+        detick_nfsamp=constants.SPECTRA_DETICK_NUMBER_SAMPLES, 
+        padding=False) -> None:
         """
         Add spectra to each Event object in Catalog.
         Spectra are stored in dictionaries
@@ -403,8 +407,10 @@ class Catalog:
 
             try:
                 event.calc_spectra(
-                    winlen_sec=winlen_sec, detick_nfsamp=detick_nfsamp,
-                    padding=padding, instrument=instrument)
+                    winlen_sec=winlen_sec, 
+                    detick_nfsamp=detick_nfsamp,
+                    padding=padding, 
+                    instrument=instrument)
                 
             except ValueError as e:
                 print('Problem with event' + event.name)

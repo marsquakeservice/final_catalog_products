@@ -10,8 +10,10 @@ Marsquake service Mars event catalogue
     Luca Scarabello (luca.scarabello@sed.ethz.ch), 2024
     Savas Ceylan (savas.ceylan@eaps.ethz.ch), 2024
     Fabian Euchner (fabian.euchner@sed.ethz.ch), 2024
+    
 :license:
     GPL
+    
 """
 
 import copy
@@ -24,14 +26,17 @@ from itertools import product
 import numpy as np
 import obspy
 
-import catalog
-import event
+
+import mqs_reports.catalog as catalog
+import mqs_reports.constants as constants
+import mqs_reports.event as event
 
 from fittingutils import \
     real2dB, dB2real, lorentz_att, vectorized_misfit_lorentz, ratio_HV, \
     calc_cov_lorentz
 
-tstarfac = dict(P=1./3, S=1.)
+
+tstarfac = dict(P=1.0/3.0, S=1.0)
 
 SP_RATIO_P = -20
 SP_RATIO_S = 0 
@@ -179,8 +184,16 @@ class Fitter(object):
     
     
     def swap_event(
-        self, event_name, detick_nfsamp, instrument, rotate, time_windows=None,
-        smprate="", force_products=False, calculate_spectra=False, 
+        self, 
+        event_name, 
+        instrument, 
+        rotate, 
+        winlen_sec=constants.SPECTRA_WELSH_WINDOW_LENGTH_SEC,
+        detick_nfsamp=constants.SPECTRA_DETICK_NUMBER_SAMPLES,
+        time_windows=None,
+        smprate="", 
+        force_products=False, 
+        calculate_spectra=False, 
         keep_spectra=True):
         """ 
         Change the current event, read its waveforms and calculate spectra.
@@ -209,10 +222,16 @@ class Fitter(object):
                     self.event.quality, self.event.wf_type, smprate, rotate))
         
             self.event.calc_spectra(
-                winlen_sec=20, detick_nfsamp=detick_nfsamp, 
-                time_windows=time_windows, rotate=rotate, instrument=instrument, 
-                smprate=smprate, force_products=force_products, 
-                calculate_spectra=calculate_spectra, keep_spectra=keep_spectra)
+                padding=constants.SPECTRA_ZEROPAD_SIGNAL, 
+                time_windows=time_windows, 
+                rotate=rotate, 
+                instrument=instrument, 
+                smprate=smprate, 
+                winlen_sec=winlen_sec, 
+                detick_nfsamp=detick_nfsamp, 
+                force_products=force_products, 
+                calculate_spectra=calculate_spectra, 
+                keep_spectra=keep_spectra)
         
         return self.event
     

@@ -40,6 +40,8 @@ from tqdm import tqdm
 
 from fittingparam import FittingParameterPool
 
+import mqs_reports.constants as constants
+
 from mqs_reports.annotations import Annotations
 from mqs_reports.constants import PICKLE_EXTENSION
 from mqs_reports.event import ENVELOPE_CORNERS_COUNT, \
@@ -132,10 +134,17 @@ SPECTRA_PLOT_BOTTOM_YLABEL = "Displacement PSD [dB]"
 
 
 def plot_spectra(
-    fitter, fitting_parameters, fitting_parameters_defaults, dir_out: str,
-    winlen_sec: float, wf_type: str="RAW", rotate: bool=False, smprate: str="",
-    orientation: list=[], force_products: bool=False, 
-    calculate_spectra: bool=False, plot_spectra: bool=True) -> None:
+    fitter, 
+    fitting_parameters, 
+    fitting_parameters_defaults, 
+    dir_out: str,
+    wf_type: str="RAW", 
+    rotate: bool=False, 
+    smprate: str="",
+    orientation: list=[], 
+    force_products: bool=False, 
+    calculate_spectra: bool=False, 
+    plot_spectra: bool=True) -> None:
     
     if (not rotate and 'ZNE' not in orientation):
         print("products.plot_spectra, ZNE not requested")
@@ -239,16 +248,25 @@ def plot_spectra(
         print("products: swap events for event {}, {}/Q{}, wf {}, smprate "\
             "{}, ZRT {}".format(event.name, event.mars_event_type_short, 
                 event.quality, event.wf_type, smprate, rotate))
-            
+        
+        detick_nfsamp = (
+            constants.SPECTRA_DETICK_NUMBER_SAMPLES if \
+                wf_type != "DEGLITCHED" else \
+                    constants.SPECTRA_DETICK_NUMBER_SAMPLES_DEGLITCHED)
+        
         try:
             # implicitly calls fitter.calc_spectra()
             fitter.swap_event(
                 event_name=event.name,
-                detick_nfsamp=(10 if wf_type != "DEGLITCHED" else 0),
-                instrument=instrument, rotate=rotate,
-                time_windows=spectral_windows, smprate=smprate, 
+                instrument=instrument, 
+                rotate=rotate,
+                winlen_sec=constants.SPECTRA_WELSH_WINDOW_LENGTH_SEC, 
+                detick_nfsamp=detick_nfsamp,
+                time_windows=spectral_windows, 
+                smprate=smprate, 
                 force_products=force_products, 
-                calculate_spectra=calculate_spectra, keep_spectra=plot_spectra)
+                calculate_spectra=calculate_spectra, 
+                keep_spectra=plot_spectra)
             
         except Exception as e:
             print(f"Error fitter.swap_event with event {event.name}: {e}")
@@ -809,10 +827,17 @@ def _add_fc_marker(axP, axS, fitting_parameters, component):
 
 
 def plot_filterbanks(
-    catalog, dir_out: str='filterbanks', annotations: Annotations=None,
-    wf_type: str="RAW", normtype: str='none', rotate: bool=False, 
-    smprate: str ="", orientation: list=[], norm: list=[], 
-    force_products: bool=False, calculate_filterbanks: bool=False, 
+    catalog, 
+    dir_out: str='filterbanks', 
+    annotations: Annotations=None,
+    wf_type: str="RAW", 
+    normtype: str='none', 
+    rotate: bool=False, 
+    smprate: str ="", 
+    orientation: list=[], 
+    norm: list=[], 
+    force_products: bool=False, 
+    calculate_filterbanks: bool=False, 
     plot_filterbanks: bool=True):
 
     # print("catalog: available normtypes: {}".format(norm))
@@ -947,25 +972,21 @@ def plot_filterbanks(
             # log, waveforms, normwindow (annotations)
             # tmin_plot, tmax_plot, timemarkers, starttime, endtime (instrument)
             # f_VBB_SP_transition, fnam, station, location_code (wf_type)
-            filter_traces(
-                event, fmin, fmax, df, 
-                annotations=annotations, instrument=instrument, 
-                wf_type=wf_type, normtype=normtype, rotate=rotate, 
-                smprate=smprate, force_products=force_products, 
+            filter_traces_for_filterbanks(
+                event, 
+                fmin, 
+                fmax, 
+                df, 
+                annotations=annotations, 
+                instrument=instrument, 
+                wf_type=wf_type, 
+                normtype=normtype, 
+                rotate=rotate, 
+                smprate=smprate, 
+                force_products=force_products, 
                 calculate_filterbanks=calculate_filterbanks, 
                 keep_filterbanks=plot_filterbanks)
             
-            
-            # not needed here!
-            # implicitly calls fitter.calc_spectra()
-            # fitter.swap_event(
-            #     event_name=event.name,
-            #     detick_nfsamp=(10 if wf_type != "DEGLITCHED" else 0),
-            #     instrument=instrument, rotate=rotate,
-            #     time_windows=spectral_windows, smprate=smprate, 
-            #     force_products=force_products, 
-            #     calculate_filterbanks=calculate_filterbanks, 
-            #     keep_filterbanks=plot_filterbanks)
             
         except Exception as e:
             print(f"Error products.filter_traces with event {event.name}: {e}")
@@ -1004,12 +1025,17 @@ def plot_filterbanks(
                     event.wf_type, smprate, rotate, normtype))
         
                 event.plot_filterbank(
-                    normwindow='all', annotations=annotations,
+                    normwindow='all', 
+                    annotations=annotations,
                     starttime=event.starttime - 300.0,
                     endtime=event.endtime + 300.0,
                     instrument=instrument,
-                    fnam=fnam, fmin=fmin, fmax=fmax, df=df,
-                    normtype=normtype, rotate=rotate)
+                    fnam=fnam, 
+                    fmin=fmin, 
+                    fmax=fmax, 
+                    df=df,
+                    normtype=normtype, 
+                    rotate=rotate)
             
             except (AttributeError, IndexError) as err:
                 print( f"Exception in filterbank for event "\
@@ -1030,15 +1056,20 @@ def plot_filterbanks(
                         event.name, event.mars_event_type_short, event.quality, 
                         event.wf_type, smprate, rotate, normtype))
                 
-                    event.plot_filterbank(starttime=t_P - 300.,
-                                            endtime=t_P + 1100.,
-                                            normwindow='S',
-                                            annotations=annotations,
-                                            tmin_plot=-240., tmax_plot=900.,
-                                            fnam=fnam,
-                                            instrument=instrument,
-                                            fmin=fmin, fmax=fmax, df=df,
-                                            normtype=normtype, rotate=rotate)
+                    event.plot_filterbank(
+                        starttime=t_P - 300.,
+                        endtime=t_P + 1100.,
+                        normwindow='S',
+                        annotations=annotations,
+                        tmin_plot=-240., 
+                        tmax_plot=900.,
+                        fnam=fnam,
+                        instrument=instrument,
+                        fmin=fmin, 
+                        fmax=fmax, 
+                        df=df,
+                        normtype=normtype, 
+                        rotate=rotate)
 
                 if t_S is not None:
                     fnam = plot_filename(event, 'phases')
@@ -1048,16 +1079,20 @@ def plot_filterbanks(
                             event.name, event.mars_event_type_short, event.quality, 
                             event.wf_type, smprate, rotate, normtype))
                 
-                        event.plot_filterbank(starttime=t_P - 120.,
-                                                endtime=t_S + 240.,
-                                                normwindow='S',
-                                                annotations=annotations,
-                                                tmin_plot=-50.,
-                                                tmax_plot=t_S - t_P + 200.,
-                                                fnam=fnam,
-                                                instrument=instrument,
-                                                fmin=fmin, fmax=fmax, df=df,
-                                                normtype=normtype, rotate=rotate)
+                        event.plot_filterbank(
+                            starttime=t_P - 120.,
+                            endtime=t_S + 240.,
+                            normwindow='S',
+                            annotations=annotations,
+                            tmin_plot=-50.,
+                            tmax_plot=t_S - t_P + 200.,
+                            fnam=fnam,
+                            instrument=instrument,
+                            fmin=fmin, 
+                            fmax=fmax, 
+                            df=df,
+                            normtype=normtype, 
+                            rotate=rotate)
             
             except (IndexError, AttributeError) as err:
                 print(f"Exception in filterbank for event "\
@@ -1066,17 +1101,31 @@ def plot_filterbanks(
         plt.close()
 
 
-def filter_traces(
+def filter_traces_for_filterbanks(
     event, 
-    fmin: float=1.0/64.0, fmax: float=4.0, df: float=2**0.5,
-    log: bool=False, waveforms: bool=False, normwindow: str='all',
-    annotations: Annotations=None, tmin_plot: float=None,
-    tmax_plot: float=None, timemarkers: dict=None,
-    starttime: UTCDateTime=None, endtime: UTCDateTime=None,
-    instrument: str="", f_VBB_SP_transition=7.5, fnam: str=None,
-    station: str="", location_code: str="", 
-    wf_type="RAW", normtype="none", rotate=False, smprate ="", 
-    force_products: bool=False, calculate_filterbanks: bool=False, 
+    fmin: float=1.0/64.0, 
+    fmax: float=4.0, 
+    df: float=2**0.5,
+    log: bool=False, 
+    waveforms: bool=False, 
+    normwindow: str='all',
+    annotations: Annotations=None, 
+    tmin_plot: float=None,
+    tmax_plot: float=None, 
+    timemarkers: dict=None,
+    starttime: UTCDateTime=None, 
+    endtime: UTCDateTime=None,
+    instrument: str="", 
+    f_VBB_SP_transition=7.5, 
+    fnam: str=None,
+    station: str=constants.DEFAULT_STATION_NAME,
+    location_code: str=constants.DEFAULT_LOCATION_CODE, 
+    wf_type="RAW", 
+    normtype="none", 
+    rotate=False, 
+    smprate ="", 
+    force_products: bool=False, 
+    calculate_filterbanks: bool=False, 
     keep_filterbanks: bool=True):
 
     """
@@ -1095,6 +1144,8 @@ def filter_traces(
     orientation = "ZRT" if rotate else "ZNE" 
     
     # zoom parameters not needed for pickle
+    # NOTE: normtype can be "none" which appears in pickle file name
+    
     filterbanks_dict_path = pjoin(
         filterbanks_path, "{}_filterbanks_{}_{}_{}_{}.{}".format(
             event.name, smprate, normtype, orientation, wf_type,

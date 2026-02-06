@@ -68,7 +68,6 @@ from mqs_reports.utils import create_fnam_event, read_data, calc_PSD, detick, \
 from mqs_reports.utils import envelope_smooth
 from mqs_reports.utils import uncertainty_from_pdf
 
-
 from marsprocessingtools import constants as marsconstants
 from marsprocessingtools import constants as marsconstants
 
@@ -158,8 +157,6 @@ class Event(object):
         self.quality = quality[-1]
         self.mars_event_type = mars_event_type.split('#')[-1]
 
-        
-        
         try:
             self.sol = solify(utct(self.picks['start'])).julday
             self.starttime = utct(utct(self.picks['start']))
@@ -278,7 +275,7 @@ class Event(object):
         self.event_metadata = dict(
             event=dict(), spectra=dict(), filterbanks=dict())
         
-        self.plot_parameters = None
+        self.product_parameters = None
         
         self.fnam_report = dict()
         self.fnam_polarisation = dict()
@@ -337,285 +334,114 @@ class Event(object):
         
         self.is_file_path_set = True
         
-        
-    def load_distance_manual(self,
-                             fnam_csv: str,
-                             overwrite=False) -> None:
-        """
-        Load distance of event from CSV file. Can be used for "aligned"
-        distances that are not in the database
-        :param: fnam_csv: path to CSV file with distances
-        :param: overwrite: Overwrite existing location from BED?
-        """
-        
-        with open(fnam_csv, 'r') as csv_file:
-            csv_reader = DictReader(csv_file)
-            for row in csv_reader:
-                if overwrite or (self.distance is None):
-                    if self.name == row['name']:
-                        self.distance = float(row['distance'])
-                        
-                        if self.distance_sigma is None:
-                            self.distance_sigma = 20.
-                        self.origin_time = utct(row['time'])
-                        self.distance_type = 'aligned'
-                        
-                        if 'sigma_dist' in row:
-                            self.distance_sigma = float(row['sigma_dist'])
-                        else:
-                            self.distance_sigma = self.distance * 0.25
-
-    def calc_distance(self,
-                      vp: float = CRUST_VP,
-                      vs: float = CRUST_VS) -> (Union[float, None],
-                                                Union[float, None],
-                                                Union[float, None]):
-        """
-        NOTE(fab): this is obsolete. Check for distance from locator.
-        
-        Calculate distance of event based on Pg and Sg picks, if available,
-        otherwise return None
-        :param vp: P-velocity
-        :param vs: S-velocity
-        :return: distance in degree or None if no picks available
-                 origin time as UTCDateTime object
-                 sigma of distance in degree (only based on pick uncertainty)
-        """
-        
-        if 'Sg' in self.picks and 'Pg' in self.picks and \
-                len(self.picks['Sg']) > 0 and len(self.picks['Pg']) > 0:
-            
-            deltat = float(utct(self.picks['Sg']) - utct(self.picks['Pg']))
-            deltat_sigma = np.sqrt(float(self.picks_sigma['Sg'])**2. +
-                                   float(self.picks_sigma['Pg'])**2.)
-            distance_km = deltat / (1. / vs - 1. / vp)
-            distance_sigma_km = deltat_sigma / (1. / vs - 1. / vp)
-            distance_degree = kilometers2degrees(distance_km,
-                                                 radius=RADIUS_MARS)
-            distance_sigma_degree = kilometers2degrees(distance_sigma_km,
-                                                       radius=RADIUS_MARS)
-            origin_time = utct(self.picks['Sg']) - distance_km / vs
-            return distance_degree, origin_time, distance_sigma_degree
-        
-        else:
-            return None, None, None
-
-
-    def calc_distance_taup(self,
-                           model: Union[TauPyModel, str],
-                           depth_in_km = 50.) \
-            -> [Union[float, None], Union[float, None]]:
-        """
-        Calculate distance of event in a taup model, based on P and S picks, if available,
-        otherwise return None
-        :param model: TauPy model object
-        :param depth_in_km: Fixed depth of event
-        :return: distance in degree or None if no picks available
-        """
-        
-
-        if type(model) == str:
-            fnam_nd = model
-            tmp_dir = "./taup_tmp/"
-            fnam_npz = tmp_dir \
-                       + psplit(fnam_nd)[-1][:-3] + ".npz"
-            if not pexists(tmp_dir):
-                makedirs(tmp_dir)
-            if not pexists(fnam_npz):
-                build_taup_model(fnam_nd,
-                                 output_folder=tmp_dir
-                                 )
-            model = TauPyModel(model=fnam_npz)
-
-        if 'S' in self.picks and 'P' in self.picks and \
-            len(self.picks['S']) > 0 and len(self.picks['P']) > 0:
-            
-            deltat = float(utct(self.picks['S']) - utct(self.picks['P']))
-            distance = get_dist(model, tSmP=deltat, depth=depth_in_km)
-
-            deltat_sigma = np.sqrt(float(self.picks_sigma['P'])**2 +
-                                   float(self.picks_sigma['S'])**2)
-            if distance is None:
-                distance_sigma = None
-            else:
-                distance_sigma = deltat_sigma / _get_SSmP(distance=distance,
-                                                          model=model,
-                                                          tmeas=0.,
-                                                          phase_list=['P', 'S'],
-                                                          plot=False,
-                                                          depth=depth_in_km)
-
-            # distance_lower = get_dist(model, tSmP=deltat - deltat_sigma, depth=depth_in_km)
-            # distance_upper = get_dist(model, tSmP=deltat + deltat_sigma, depth=depth_in_km)
-            return distance, distance_sigma
-        
-        else:
-            return None, None
-
-
-    def calc_distance_sigma_from_pdf(self):
-        
-        try:
-            sigma_low, sigma_up = uncertainty_from_pdf(
-                variable=self.distance_pdf[0],
-                p=self.distance_pdf[1])
-            
-            self.distance_sigma = (sigma_up - sigma_low) / 2.0
-            
-        except Exception as e:
-            print("cannot get distance sigma from PDF: {}".format(e))
-            self.distance_sigma = DISTANCE_SIGMA_DEFAULT
     
-    
-    def _set_plot_parameters(self):
+    def _set_product_parameters(self):
         """
+        Set and store parameters pre-computed for plots
+        - spectra 
+        - filterbanks
+
         """
         
         # print("ev {}: setting plot parameters".format(self.name))
         
-        self.plot_parameters = dict(filterbanks=dict(), spectra=dict())
+        self.product_parameters = dict(filterbanks=dict(), spectra=dict())
         
         # filterbanks setting per event
         # spectra setting per event
         
-        # defaults
-        fmax_LF = 8.0
-        fmin_LF = 1.0 / 32.0
-        fmax_HF = 16.0
-        fmin_HF = 1.0 / 2.0
-        df_LF = 2.0**0.5
-        df_HF = 2.0**0.25
+        ## defaults - filterbanks
+
+        fmin_LF = constants.PLOT_FILTERBANK_FMIN_LF
+        fmax_LF = constants.PLOT_FILTERBANK_FMAX_LF
+        df_LF = constants.PLOT_FILTERBANK_DF_LF
+        
+        fmin_HF = constants.PLOT_FILTERBANK_FMIN_HF
+        fmax_HF = constants.PLOT_FILTERBANK_FMAX_HF
+        df_HF = constants.PLOT_FILTERBANK_DF_HF
         
         # plot method defaults
+        # still used?
         # fmin = 1.0 / 64
         # fmax = 4.0
         # df = 2.0**0.5
         
-        if self.mars_event_type_short in ['LF', 'WB', 'BB']:
+        # NOTE: event type WB has been phased out
+        if self.mars_event_type_short == 'SF' or \
+            self.mars_event_type_short.startswith("D"): 
             
-            self.plot_parameters['filterbanks']['instrument'] = 'VBB'
-                
+            # Super High Frequency, deep learning
+            self.product_parameters['filterbanks']['instrument'] = 'SP'
+            
+            self.product_parameters['filterbanks']['t_S'] = None
+            self.product_parameters['filterbanks']['t_P'] = utct(self.starttime)
+            
+            self.product_parameters['filterbanks']['fmin'] = \
+                constants.PLOT_FILTERBANK_FMIN_SP_DL
+            self.product_parameters['filterbanks']['fmax'] = \
+                constants.PLOT_FILTERBANK_FMAX_SP_DL
+            self.product_parameters['filterbanks']['df'] = df_HF
+        
+        elif self.mars_event_type_short in ['LF', 'BB', 'HF', 'VF', '24']:
+            
+            # NOTE: Pg and Sg have been phased out
             if 'S' in self.picks and 'P' in self.picks and \
                 len(self.picks['S']) * len(self.picks['P']) > 0:
                 
-                self.plot_parameters['filterbanks']['t_S'] = utct(
-                    self.picks['S'])
-                self.plot_parameters['filterbanks']['t_P'] = utct(
+                self.product_parameters['filterbanks']['t_P'] = utct(
                     self.picks['P'])
+                self.product_parameters['filterbanks']['t_S'] = utct(
+                    self.picks['S'])
             
             else:
-                self.plot_parameters['filterbanks']['t_S'] = None
-                self.plot_parameters['filterbanks']['t_P'] = utct(
+                self.product_parameters['filterbanks']['t_S'] = None
+                self.product_parameters['filterbanks']['t_P'] = utct(
                     self.starttime)
             
-            self.plot_parameters['filterbanks']['fmin'] = fmin_LF
-            self.plot_parameters['filterbanks']['fmax'] = fmax_LF
-            self.plot_parameters['filterbanks']['df'] = df_LF
-            
-        elif self.mars_event_type_short in ['HF', '24']:
-            
-            self.plot_parameters['filterbanks']['instrument'] = 'SP'
-            
-            if 'Sg' in self.picks and 'Pg' in self.picks and \
-                len(self.picks['Sg']) * len(self.picks['Pg']) > 0:
+            if self.mars_event_type_short == 'VF':
                 
-                self.plot_parameters['filterbanks']['t_S'] = utct(
-                    self.picks['Sg'])
-                self.plot_parameters['filterbanks']['t_P'] = utct(
-                    self.picks['Pg'])
-            
-            # fab: prevent lookup of non-existent Pg, Sg
-            elif 'S' in self.picks and 'P' in self.picks and \
-                len(self.picks['S']) * len(self.picks['P']) > 0:
+                self.product_parameters['filterbanks']['df'] = df_HF
                 
-                self.plot_parameters['filterbanks']['t_S'] = utct(
-                    self.picks['S'])
-                self.plot_parameters['filterbanks']['t_P'] = utct(
-                    self.picks['P'])
-                
-            else:
-                self.plot_parameters['filterbanks']['t_S'] = None
-                self.plot_parameters['filterbanks']['t_P'] = utct(
-                    self.starttime)
-            
-            self.plot_parameters['filterbanks']['fmin'] = fmin_HF
-            self.plot_parameters['filterbanks']['fmax'] = fmax_HF
-            self.plot_parameters['filterbanks']['df'] = df_HF
-
-        elif self.mars_event_type_short == 'VF':
-            
-            if self.available_sampling_rates()['SP_Z'] == 100.0:
+                if self.available_sampling_rates()['SP_Z'] == 100.0:
                     
-                self.plot_parameters['filterbanks']['instrument'] = 'both'
-                
-                if 'Sg' in self.picks and 'Pg' in self.picks and \
-                    len(self.picks['Sg']) * len(self.picks['Pg']) > 0:
+                    self.product_parameters['filterbanks']['instrument'] = 'both'
                     
-                    self.plot_parameters['filterbanks']['t_S'] = utct(
-                        self.picks['Sg'])
-                    self.plot_parameters['filterbanks']['t_P'] = utct(
-                        self.picks['Pg'])
-                
-                # fab: prevent lookup of non-existent Pg, Sg
-                elif 'S' in self.picks and 'P' in self.picks and \
-                    len(self.picks['S']) * len(self.picks['P']) > 0:
+                    self.product_parameters['filterbanks']['fmin'] = \
+                        constants.PLOT_FILTERBANK_FMIN_VF_BOTH
+                    self.product_parameters['filterbanks']['fmax'] = \
+                        constants.PLOT_FILTERBANK_FMAX_VF_BOTH
                     
-                    self.plot_parameters['filterbanks']['t_S'] = utct(
-                        self.picks['S'])
-                    self.plot_parameters['filterbanks']['t_P'] = utct(
-                        self.picks['P'])
-                
+                    
                 else:
-                    self.plot_parameters['filterbanks']['t_S'] = None
-                    self.plot_parameters['filterbanks']['t_P'] = utct(
-                        self.starttime)
+                    self.product_parameters['filterbanks']['instrument'] = 'SP'
+                    
+                    self.product_parameters['filterbanks']['fmin'] = \
+                        constants.PLOT_FILTERBANK_FMIN_VF_SP
+                    self.product_parameters['filterbanks']['fmax'] = \
+                        constants.PLOT_FILTERBANK_FMAX_VF_SP
                 
-                self.plot_parameters['filterbanks']['fmin'] = 1.0 / 8.0
-                self.plot_parameters['filterbanks']['fmax'] = 32.0 * np.sqrt(2.0)
-                self.plot_parameters['filterbanks']['df'] = df_HF
+            elif self.mars_event_type_short in ['LF', 'BB']:
+                    
+                self.product_parameters['filterbanks']['instrument'] = 'VBB'
+                
+                self.product_parameters['filterbanks']['fmin'] = fmin_LF
+                self.product_parameters['filterbanks']['fmax'] = fmax_LF
+                self.product_parameters['filterbanks']['df'] = df_LF
                 
             else:
                 
-                self.plot_parameters['filterbanks']['instrument'] = 'SP'
+                # HF, 24
+                self.product_parameters['filterbanks']['instrument'] = 'SP'
                 
-                if 'Sg' in self.picks and 'Pg' in self.picks and \
-                    len(self.picks['Sg']) * len(self.picks['Pg']) > 0:
-                    
-                    self.plot_parameters['filterbanks']['t_S'] = utct(
-                        self.picks['Sg'])
-                    self.plot_parameters['filterbanks']['t_P'] = utct(
-                        self.picks['Pg'])
-                
-                # fab: prevent lookup of non-existent Pg, Sg
-                elif 'S' in self.picks and 'P' in self.picks and \
-                    len(self.picks['S']) * len(self.picks['P']) > 0:
-                    
-                    self.plot_parameters['filterbanks']['t_S'] = utct(
-                        self.picks['S'])
-                    self.plot_parameters['filterbanks']['t_P'] = utct(
-                        self.picks['P'])
-                
-                else:
-                    self.plot_parameters['filterbanks']['t_S'] = None
-                    self.plot_parameters['filterbanks']['t_P'] = utct(
-                        self.starttime)
-                    
-                self.plot_parameters['filterbanks']['fmin'] = 1.0 / 8.0
-                self.plot_parameters['filterbanks']['fmax'] = 10.0
-                self.plot_parameters['filterbanks']['df'] = df_HF
+                self.product_parameters['filterbanks']['fmin'] = fmin_HF
+                self.product_parameters['filterbanks']['fmax'] = fmax_HF
+                self.product_parameters['filterbanks']['df'] = df_HF
+            
+        else:
+            error_str = "_set_product_parameters: illegal mars event type "\
+                "{}".format(self.mars_event_type_short)
+            raise RuntimeError(error_str)
 
-        else: 
-            
-            # Super High Frequency
-            self.plot_parameters['filterbanks']['instrument'] = 'SP'
-            
-            self.plot_parameters['filterbanks']['t_S'] = None
-            self.plot_parameters['filterbanks']['t_P'] = utct(self.starttime)
-            
-            self.plot_parameters['filterbanks']['fmin'] = 0.5
-            self.plot_parameters['filterbanks']['fmax'] = 32.0 * np.sqrt(2.0)
-            self.plot_parameters['filterbanks']['df'] = df_HF
-    
     
     def add_rotated_traces(self):
         
@@ -693,7 +519,7 @@ class Event(object):
             self.add_rotated_traces()
         
         # set plot parameters
-        self._set_plot_parameters()
+        self._set_product_parameters()
         
 
     def read_data_local(
@@ -802,10 +628,10 @@ class Event(object):
         sc3dir: str,
         wf_type: str,
         kind: str,
-        fmin_SP=0.5,
-        fmin_VBB=1. / 30.,
-        tpre_SP: float = 100,
-        tpre_VBB: float = 1200.0,
+        fmin_SP: str=constants.WAVEFORM_READ_SP_FMIN,
+        fmin_VBB: str=constants.WAVEFORM_READ_VBB_FMIN,
+        tpre_SP: str=constants.WAVEFORM_READ_SP_T_PRE,
+        tpre_VBB: str=constants.WAVEFORM_READ_VBB_T_PRE,
         station: str=constants.DEFAULT_STATION_NAME,
         location_code: str=constants.DEFAULT_LOCATION_CODE,
         remove_response: bool=True) -> None:
@@ -818,33 +644,42 @@ class Event(object):
             ('RAW', 'DEGLITCHED', 'DENOISED')
         :param kind: Unit to correct waveform into ('DISP', 'VEL', 'ACC')
         :param tpre_SP: prefetch time for SP data (default: 100 sec)
-        :param tpre_VBB: prefetch time for VBB data (default: 900 sec)
+        :param tpre_VBB: prefetch time for VBB data (default: 1200 sec)
         
         """
 
+        ## set time window for SDS waveform read
+        
+        # start: minimum of start, noise start
         if len(self.picks['noise_start']) > 0:
-            twin_start = min((utct(self.picks['start']),
-                              utct(self.picks['noise_start'])))
+            twin_start = min(
+                (utct(self.picks['start']), utct(self.picks['noise_start'])))
+        
         else:
             twin_start = utct(self.picks['start'])
+        
+        # end: maximum of end, noise end
         if len(self.picks['noise_end']) > 0:
-            twin_end = max((utct(self.picks['end']),
-                            utct(self.picks['noise_end'])))
+            twin_end = max(
+                (utct(self.picks['end']), utct(self.picks['noise_end'])))
+        
         else:
             twin_end = utct(self.picks['end'])
 
         if wf_type == 'RAW':
-            self._read_data_from_sc3dir_raw(inv, sc3dir, kind,
-                                       fmin_SP, fmin_VBB, tpre_SP, tpre_VBB,
-                                       twin_start, twin_end)
+            self._read_data_from_sc3dir_raw(
+                inv, sc3dir, kind, fmin_SP, fmin_VBB, tpre_SP, tpre_VBB,
+                twin_start, twin_end)
+        
         elif wf_type == 'DEGLITCHED':
-            self._read_data_from_sc3dir_deglitched(inv, sc3dir, kind,
-                                       fmin_SP, fmin_VBB, tpre_SP, tpre_VBB,
-                                       twin_start, twin_end)
+            self._read_data_from_sc3dir_deglitched(
+                inv, sc3dir, kind, fmin_SP, fmin_VBB, tpre_SP, tpre_VBB,
+                twin_start, twin_end)
+            
         elif wf_type == 'DENOISED':
-            self._read_data_from_sc3dir_denoised(inv, sc3dir, kind,
-                                       fmin_SP, fmin_VBB, tpre_SP, tpre_VBB,
-                                       twin_start, twin_end)
+            self._read_data_from_sc3dir_denoised(
+                inv, sc3dir, kind, fmin_SP, fmin_VBB, tpre_SP, tpre_VBB,
+                twin_start, twin_end)
 
 
     def _read_data_from_sc3dir_raw(
@@ -871,9 +706,11 @@ class Event(object):
             sc3dir=sc3dir, time=self.picks['start'])
 
         if len(glob(fnam_SP)) > 0:
+            
             # Use SP waveforms only if 65.EH? exists, not otherwise (we
             # don't need 20sps SP data)
-            self.waveforms_SP = read_data(fnam_SP, inv=inv, kind=kind,
+            self.waveforms_SP = read_data(
+                fnam_SP, inv=inv, kind=kind,
                 twin=[twin_start - tpre_SP, twin_end + tpre_SP], fmin=fmin_SP)
             
             if self.waveforms_SP is not None and len(self.waveforms_SP) == 0:
@@ -888,11 +725,9 @@ class Event(object):
             filenam_inst=filenam_VBB100, station=station,
             sc3dir=sc3dir, time=self.picks['start'])
         
-        self.waveforms_VBB100 = read_data(fnam_VBB100, inv=inv,
-                                       kind=kind,
-                                       fmin=fmin_VBB,
-                                       twin=[twin_start - tpre_VBB,
-                                             twin_end + tpre_VBB])
+        self.waveforms_VBB100 = read_data(
+            fnam_VBB100, inv=inv, kind=kind, fmin=fmin_VBB,
+            twin=[twin_start - tpre_VBB, twin_end + tpre_VBB])
         
         if self.waveforms_VBB100 is not None and \
                 len(self.waveforms_VBB100) != 3:
@@ -908,11 +743,11 @@ class Event(object):
             filenam_inst=filenam_VBB, station=station,
             sc3dir=sc3dir, time=self.picks['start'])
         
-        self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
-                                        kind=kind,
-                                        fmin=fmin_VBB,
-                                        twin=[twin_start - tpre_VBB,
-                                                twin_end + tpre_VBB])
+        self.waveforms_VBB = read_data(
+            fnam_VBB, inv=inv,
+            kind=kind,
+            fmin=fmin_VBB,
+            twin=[twin_start - tpre_VBB, twin_end + tpre_VBB])
         
         if self.waveforms_VBB is not None and len(self.waveforms_VBB) == 3:
             success_VBB = True
@@ -926,11 +761,12 @@ class Event(object):
                 filenam_inst=filenam_VBB, station=station,
                 sc3dir=sc3dir, time=self.picks['start'])
 
-            self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
-                                           kind=kind,
-                                           fmin=fmin_VBB,
-                                           twin=[twin_start - tpre_VBB,
-                                                 twin_end + tpre_VBB])
+            self.waveforms_VBB = read_data(
+                fnam_VBB, inv=inv,
+                kind=kind,
+                fmin=fmin_VBB,
+                twin=[twin_start - tpre_VBB, twin_end + tpre_VBB])
+            
             if self.waveforms_VBB is not None and \
                     len(self.waveforms_VBB) == 3:
                 success_VBB = True
@@ -943,11 +779,12 @@ class Event(object):
                 filenam_inst=filenam_VBB, station=station,
                 sc3dir=sc3dir, time=self.picks['start'])
 
-            self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
-                                           kind=kind,
-                                           fmin=fmin_VBB,
-                                           twin=[twin_start - tpre_VBB,
-                                                 twin_end + tpre_VBB])
+            self.waveforms_VBB = read_data(
+                fnam_VBB, inv=inv,
+                kind=kind,
+                fmin=fmin_VBB,
+                twin=[twin_start - tpre_VBB, twin_end + tpre_VBB])
+
             if self.waveforms_VBB is not None and \
                     len(self.waveforms_VBB) == 3:
 
@@ -962,11 +799,12 @@ class Event(object):
                 filenam_inst=filenam_VBB, station=station,
                 sc3dir=sc3dir, time=self.picks['start'])
 
-            self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
-                                           kind=kind,
-                                           fmin=fmin_VBB,
-                                           twin=[twin_start - tpre_VBB,
-                                                 twin_end + tpre_VBB])
+            self.waveforms_VBB = read_data(
+                fnam_VBB, inv=inv,
+                kind=kind,
+                fmin=fmin_VBB,
+                twin=[twin_start - tpre_VBB, twin_end + tpre_VBB])
+            
             if self.waveforms_VBB is not None and \
                     len(self.waveforms_VBB) == 3:
 
@@ -981,16 +819,17 @@ class Event(object):
                     fnam_SP, fnam_VBB, self.picks['start']))
 
 
-    def _read_data_from_sc3dir_deglitched(self,
-                              inv: obspy.Inventory,
-                              sc3dir: str,
-                              kind: str,
-                              fmin_SP: float,
-                              fmin_VBB: float,
-                              tpre_SP: float,
-                              tpre_VBB: float,
-                              twin_start: float,
-                              twin_end: float) -> None:
+    def _read_data_from_sc3dir_deglitched(
+        self,
+        inv: obspy.Inventory,
+        sc3dir: str,
+        kind: str,
+        fmin_SP: float,
+        fmin_VBB: float,
+        tpre_SP: float,
+        tpre_VBB: float,
+        twin_start: float,
+        twin_end: float) -> None:
 
         self.waveforms_SP = None
         self.waveforms_VBB = None
@@ -1001,11 +840,10 @@ class Event(object):
             sc3dir=sc3dir, time=self.picks['start'])
         
         if len(glob(fnam_VBB)) % 3 == 0:
-            self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
-                                           kind=kind,
-                                           fmin=fmin_VBB,
-                                           twin=[twin_start - tpre_VBB,
-                                                 twin_end + tpre_VBB])
+            self.waveforms_VBB = read_data(
+                fnam_VBB, inv=inv, kind=kind, fmin=fmin_VBB,
+                twin=[twin_start - tpre_VBB, twin_end + tpre_VBB])
+            
             if self.waveforms_VBB is not None and \
                     len(self.waveforms_VBB) != 3:
                 self.waveforms_VBB = None
@@ -1015,16 +853,17 @@ class Event(object):
                   (self.picks['start'], fnam_VBB))
 
 
-    def _read_data_from_sc3dir_denoised(self,
-                              inv: obspy.Inventory,
-                              sc3dir: str,
-                              kind: str,
-                              fmin_SP: float,
-                              fmin_VBB: float,
-                              tpre_SP: float,
-                              tpre_VBB: float,
-                              twin_start: float,
-                              twin_end: float) -> None:
+    def _read_data_from_sc3dir_denoised(
+        self,
+        inv: obspy.Inventory,
+        sc3dir: str,
+        kind: str,
+        fmin_SP: float,
+        fmin_VBB: float,
+        tpre_SP: float,
+        tpre_VBB: float,
+        twin_start: float,
+        twin_end: float) -> None:
 
         self.waveforms_SP = None
         self.waveforms_VBB = None
@@ -1037,11 +876,12 @@ class Event(object):
             sc3dir=sc3dir, time=self.picks['start'])
         
         if len(glob(fnam_VBB)) % 3 == 0:
-            self.waveforms_VBB = read_data(fnam_VBB, inv=inv,
-                                           kind=kind,
-                                           fmin=fmin_VBB,
-                                           twin=[twin_start - tpre_VBB,
-                                                 twin_end + tpre_VBB])
+            self.waveforms_VBB = read_data(
+                fnam_VBB, inv=inv,
+                kind=kind,
+                fmin=fmin_VBB,
+                twin=[twin_start - tpre_VBB, twin_end + tpre_VBB])
+            
             if self.waveforms_VBB is not None and \
                     len(self.waveforms_VBB) != 3:
                 self.waveforms_VBB = None
@@ -1055,46 +895,52 @@ class Event(object):
         
         available = dict()
         
-        channels = {'VBB_Z': '??Z',
-                    'VBB_N': '??N',
+        # VBB, VBB100, SP
+        for wf_classmember_name, wf_config in \
+            constants.WF_CHANNEL_CONFIG.items():
+            
+            wf = getattr(self, wf_classmember_name, None)
+            
+            for chan, mask in wf_config.items():
+                
+                available[chan] = None
+                
+                if wf is not None:
+                    tr = wf.select(channel=mask)
+                    
+                    if len(tr) > 0:
+                        available[chan] = tr[0].stats.sampling_rate
 
-                    'VBB_E': '??E'}
-
-        for chan, seed in channels.items():
-            available[chan] = None
-            if self.waveforms_VBB is not None:
-                tr = self.waveforms_VBB.select(channel=seed)
-                if len(tr) > 0:
-                    available[chan] = tr[0].stats.sampling_rate
-
-        channels = {'VBB100_Z': '??Z',
-                    'VBB100_N': '??N',
-                    'VBB100_E': '??E'}
-        for chan, seed in channels.items():
-            available[chan] = None
-            if self.waveforms_VBB100 is not None:
-                tr = self.waveforms_VBB100.select(channel=seed)
-                if len(tr) > 0:
-                    available[chan] = tr[0].stats.sampling_rate
-
-        channels = {'SP_Z': '??Z',
-                    'SP_N': '??N',
-                    'SP_E': '??E'}
-
-        for chan, seed in channels.items():
-            available[chan] = None
-            if self.waveforms_SP is not None:
-                tr = self.waveforms_SP.select(channel=seed)
-                if len(tr) > 0:
-                    available[chan] = tr[0].stats.sampling_rate
+#             for chan, mask in constants.VBB100_CHANNEL_MASK.items():
+#                 available[chan] = None
+#                 
+#                 if self.waveforms_VBB100 is not None:
+#                     tr = self.waveforms_VBB100.select(channel=mask)
+#                     if len(tr) > 0:
+#                         available[chan] = tr[0].stats.sampling_rate
+# 
+#             for chan, mask in constants.SP_CHANNEL_MASK.items():
+#                 available[chan] = None
+#                 
+#                 if self.waveforms_SP is not None:
+#                     tr = self.waveforms_SP.select(channel=mask)
+#                     if len(tr) > 0:
+#                         available[chan] = tr[0].stats.sampling_rate
 
         return available
 
 
     def calc_spectra(
-        self, winlen_sec, detick_nfsamp=0, padding=True, time_windows=None,
-        rotate: bool=False, instrument: str="", smprate: str="",
-        force_products: bool=False, calculate_spectra: bool=False, 
+        self, 
+        padding=True, 
+        time_windows=None,
+        rotate: bool=False, 
+        instrument: str="", 
+        smprate: str="",
+        winlen_sec=constants.SPECTRA_WELSH_WINDOW_LENGTH_SEC, 
+        detick_nfsamp=constants.SPECTRA_DETICK_NUMBER_SAMPLES, 
+        force_products: bool=False, 
+        calculate_spectra: bool=False, 
         keep_spectra: bool=False):
 
         """
@@ -1111,6 +957,7 @@ class Event(object):
         :param winlen_sec: window length for Welch estimator
         :param detick_nfsamp: How many samples (in f-domain) to smoothen around
                               1 Hz
+        
         :param padding: Zeropad signal by factor of 2 to smoothen spectra?
         
         """
@@ -1195,18 +1042,23 @@ class Event(object):
         if instrument == 'VBB':
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
             st_HF = None
+        
         elif instrument == 'VBB100':
             st_LF = None
             st_HF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
+        
         elif instrument == 'SP':
             st_LF = None
             st_HF = self.waveforms_SP.select(channel='??[ENZ]').copy()
+        
         elif instrument == 'VBB+VBB100':
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
+        
         elif instrument == 'VBB+SP':
             st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
             st_HF = self.waveforms_SP.select(channel='??[ENZ]').copy()
+        
         else:
             raise ValueError(f'Invalid value for instrument: {instrument}')
 
@@ -1229,12 +1081,16 @@ class Event(object):
             if st_LF is not None:
                 
                 spectrum_variable = dict()
+                
                 for chan in (['Z','R','T'] if rotate else ['Z','N','E']):
+                    
                     st_sel = st_LF.select(channel='??' + chan).copy()
+                    
                     if detick_nfsamp != 0:
                         tr = detick(st_sel[0], detick_nfsamp=detick_nfsamp)
                     else:
                         tr = st_sel[0].copy()
+                    
                     tr.trim(starttime=utct(twin[0]), endtime=utct(twin[1]))
 
                     if tr.stats.npts > 0:
@@ -1361,7 +1217,8 @@ class Event(object):
 
         # write spectra to pickle files, in event/Sxxxxy/ directory
         if calculate_spectra:
-            print("calc_spectra: writing spectra to {}".format(spectra_dict_path))
+            print("calc_spectra: writing spectra to {}".format(
+                spectra_dict_path))
             
             makedirs(spectra_path, exist_ok=True)
             
@@ -1381,7 +1238,137 @@ class Event(object):
             self.spectra_SP = None
             self.amplitudes = None
         
+    
+    def load_distance_manual(self,
+                             fnam_csv: str,
+                             overwrite=False) -> None:
+        """
+        Load distance of event from CSV file. Can be used for "aligned"
+        distances that are not in the database
+        :param: fnam_csv: path to CSV file with distances
+        :param: overwrite: Overwrite existing location from BED?
+        """
         
+        with open(fnam_csv, 'r') as csv_file:
+            csv_reader = DictReader(csv_file)
+            for row in csv_reader:
+                if overwrite or (self.distance is None):
+                    if self.name == row['name']:
+                        self.distance = float(row['distance'])
+                        
+                        if self.distance_sigma is None:
+                            self.distance_sigma = 20.
+                        self.origin_time = utct(row['time'])
+                        self.distance_type = 'aligned'
+                        
+                        if 'sigma_dist' in row:
+                            self.distance_sigma = float(row['sigma_dist'])
+                        else:
+                            self.distance_sigma = self.distance * 0.25
+
+
+    def calc_distance(self,
+                      vp: float = CRUST_VP,
+                      vs: float = CRUST_VS) -> (Union[float, None],
+                                                Union[float, None],
+                                                Union[float, None]):
+        """
+        NOTE(fab): this is obsolete. Check for distance from locator.
+        
+        Calculate distance of event based on Pg and Sg picks, if available,
+        otherwise return None
+        :param vp: P-velocity
+        :param vs: S-velocity
+        :return: distance in degree or None if no picks available
+                 origin time as UTCDateTime object
+                 sigma of distance in degree (only based on pick uncertainty)
+        """
+        
+        if 'Sg' in self.picks and 'Pg' in self.picks and \
+                len(self.picks['Sg']) > 0 and len(self.picks['Pg']) > 0:
+            
+            deltat = float(utct(self.picks['Sg']) - utct(self.picks['Pg']))
+            deltat_sigma = np.sqrt(float(self.picks_sigma['Sg'])**2. +
+                                   float(self.picks_sigma['Pg'])**2.)
+            distance_km = deltat / (1. / vs - 1. / vp)
+            distance_sigma_km = deltat_sigma / (1. / vs - 1. / vp)
+            distance_degree = kilometers2degrees(distance_km,
+                                                 radius=RADIUS_MARS)
+            distance_sigma_degree = kilometers2degrees(distance_sigma_km,
+                                                       radius=RADIUS_MARS)
+            origin_time = utct(self.picks['Sg']) - distance_km / vs
+            return distance_degree, origin_time, distance_sigma_degree
+        
+        else:
+            return None, None, None
+
+
+    def calc_distance_taup(self,
+                           model: Union[TauPyModel, str],
+                           depth_in_km = 50.) \
+            -> [Union[float, None], Union[float, None]]:
+        """
+        Calculate distance of event in a taup model, based on P and S picks, if available,
+        otherwise return None
+        :param model: TauPy model object
+        :param depth_in_km: Fixed depth of event
+        :return: distance in degree or None if no picks available
+        """
+        
+
+        if type(model) == str:
+            fnam_nd = model
+            tmp_dir = "./taup_tmp/"
+            fnam_npz = tmp_dir \
+                       + psplit(fnam_nd)[-1][:-3] + ".npz"
+            if not pexists(tmp_dir):
+                makedirs(tmp_dir)
+            if not pexists(fnam_npz):
+                build_taup_model(fnam_nd,
+                                 output_folder=tmp_dir
+                                 )
+            model = TauPyModel(model=fnam_npz)
+
+        if 'S' in self.picks and 'P' in self.picks and \
+            len(self.picks['S']) > 0 and len(self.picks['P']) > 0:
+            
+            deltat = float(utct(self.picks['S']) - utct(self.picks['P']))
+            distance = get_dist(model, tSmP=deltat, depth=depth_in_km)
+
+            deltat_sigma = np.sqrt(float(self.picks_sigma['P'])**2 +
+                                   float(self.picks_sigma['S'])**2)
+            if distance is None:
+                distance_sigma = None
+            else:
+                distance_sigma = deltat_sigma / _get_SSmP(distance=distance,
+                                                          model=model,
+                                                          tmeas=0.,
+                                                          phase_list=['P', 'S'],
+                                                          plot=False,
+                                                          depth=depth_in_km)
+
+            # distance_lower = get_dist(model, tSmP=deltat - deltat_sigma, depth=depth_in_km)
+            # distance_upper = get_dist(model, tSmP=deltat + deltat_sigma, depth=depth_in_km)
+            return distance, distance_sigma
+        
+        else:
+            return None, None
+
+
+    def calc_distance_sigma_from_pdf(self):
+        
+        try:
+            sigma_low, sigma_up = uncertainty_from_pdf(
+                variable=self.distance_pdf[0],
+                p=self.distance_pdf[1])
+            
+            self.distance_sigma = (sigma_up - sigma_low) / 2.0
+            
+        except Exception as e:
+            print("cannot get distance sigma from PDF: {}".format(e))
+            self.distance_sigma = DISTANCE_SIGMA_DEFAULT
+    
+    
     def pick_amplitude(self,
                        pick: str,
                        comp: str,
@@ -1950,16 +1937,16 @@ class Event(object):
         # leftover from branch fab
         
         # if instrument is None:
-        #     instrument = self.plot_parameters['filterbanks']['instrument']
+        #     instrument = self.product_parameters['filterbanks']['instrument']
         
 #         if fmin is None:
-#             fmin = self.plot_parameters['filterbanks']['fmin']
+#             fmin = self.product_parameters['filterbanks']['fmin']
 #             
 #         if fmax is None:
-#             fmax = self.plot_parameters['filterbanks']['fmax']
+#             fmax = self.product_parameters['filterbanks']['fmax']
 #  
 #         if df is None:
-#             df = self.plot_parameters['filterbanks']['df']                
+#             df = self.product_parameters['filterbanks']['df']                
         
         # Determine frequencies
         nfreqs = int(np.round(np.log(fmax / fmin) / np.log(df), decimals=0) + 1)

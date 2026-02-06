@@ -23,7 +23,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import obspy
-from obspy import UTCDateTime as utct, UTCDateTime
+from obspy import UTCDateTime as utct
+
 from obspy.signal.filter import envelope
 from obspy.signal.rotate import rotate2zne
 from obspy.signal.util import next_pow_2
@@ -31,39 +32,42 @@ from obspy.signal.util import next_pow_2
 from scipy.fftpack import fft, ifft
 from scipy.signal import hilbert
 
+import mqs_reports.constants as constants
+
 from mqs_reports.constants import SEC_PER_DAY_EARTH, SEC_PER_DAY_MARS
 
 
-def solify(UTC_time, sol0=UTCDateTime(2018, 11, 26, 5, 10, 50.33508)):
+def solify(UTC_time, sol0=constants.TIMESTAMP_SOL0):
+    
     if type(UTC_time) is str:
-        UTC_time = UTCDateTime(UTC_time)
+        UTC_time = utct(UTC_time)
+    
     MIT = (UTC_time - sol0) / SEC_PER_DAY_MARS
-    t = UTCDateTime((MIT - 1) * SEC_PER_DAY_EARTH)
+    t = utct((MIT - 1) * SEC_PER_DAY_EARTH)
+    
     return t
 
 
-def UTCify(LMST_time, sol0=UTCDateTime(2018, 11, 26, 5, 10, 50.33508)):
+def UTCify(LMST_time, sol0=constants.TIMESTAMP_SOL0):
+    
     MIT = float(LMST_time) / SEC_PER_DAY_EARTH + 1
-    UTC_time = UTCDateTime(MIT * SEC_PER_DAY_MARS + float(sol0))
+    UTC_time = utct(MIT * SEC_PER_DAY_MARS + float(sol0))
+    
     return UTC_time
 
 
-def create_fnam_event(
-        time,
-        station,
-        sc3dir,
-        filenam_inst
-        ):
+def create_fnam_event(timestamp, station, sc3dir, filenam_inst):
     
-    dirnam = pjoin(sc3dir,
-                   'op/data/waveform/%04d/XB/%s/' % (utct(time).year, station))
+    dirnam = pjoin(
+        sc3dir, 
+        "op/data/waveform/{04d}/XB/{}/".format(utct(timestamp).year, station))
 
     dirnam_inst = pjoin(dirnam, '???.D')
-
-    hour = utct(time).strftime('%H')
+    hour = utct(timestamp).strftime('%H')
     
     fnam_inst = pjoin(
-        dirnam_inst, filenam_inst % (utct(time).year, utct(time).julday))
+        dirnam_inst, 
+        filenam_inst % (utct(timestamp).year, utct(timestamp).julday))
             
     if hour in ['00', '22', '23']:
         fnam_inst = fnam_inst[:-1] + '?'
@@ -79,6 +83,7 @@ def f_c(M0, vs, ds):
 
 def M0(Mw):
     return 10 ** (Mw * 1.5 + 9.1)
+
 
 def attenuation_term(freqs, Qm, Qk=5e4, x=1e6, phase='S', vp=7.5e3, vs=4.1e3):
     if phase == 'P':
@@ -120,190 +125,276 @@ def pred_spec(freqs, ds, Qm, amp, dist, mag, phase, vs=5.e3):
 #     return 20 * np.log10(A * stf_amp) + amp
 
 
-def create_ZNE_HG(st: obspy.Stream,
-                  inv: obspy.Inventory=None,
-                  station: str='ELYSE',
-                  location_code='00'):
+def create_ZNE_HG(
+    st: obspy.Stream,
+    inv: obspy.Inventory=None,
+    station=constants.DEFAULT_STATION_NAME,
+    location_code=constants.DEFAULT_LOCATION_CODE):
+    """
+    Rotate sensor's original UVW directions into ZNE and ZRT.
     
-    # dip_u, dip_v, dip_w, = -35.3, -35.3, -35.3
-    # azimuth_u, azimuth_v, azimuth_w = 0., 120., 240.
-
+    """
+    
     if len(st) == 1 and st[0].stats.channel == 'EHU':
+        
+        # special treatment EH?
         # only SP1==SPZ switched on
+        
         tr_Z = st[0].copy()
         tr_Z.stats.channel = 'EHZ'
         st_ZNE = obspy.Stream(traces=[tr_Z])
 
     else:
+        
         chan_name = st[0].stats.channel[0:2]
 
+        channelnames = dict(
+            U="{}U".format(chan_name), 
+            V="{}V".format(chan_name), 
+            W="{}W".format(chan_name))
+        
         if inv is None:
-            dip_u = -29.4
-            dip_v = -29.2
-            dip_w = -29.7
-            azi_u = 135.1
-            azi_v = 15.0
-            azi_w = 255.0
+            
+            sensor_dip = constants.SENSOR_DIRECTIONS['dip']
+            sensor_azi = constants.SENSOR_DIRECTIONS['azimuth']
+        
         else:
 
-            chan_u = inv.select(station=st[0].stats.station,
-                                starttime=st[0].stats.starttime,
-                                endtime=st[0].stats.endtime,
-                                channel=chan_name + 'U')[0][0][0]
-            chan_v = inv.select(station=st[0].stats.station,
-                                starttime=st[0].stats.starttime,
-                                endtime=st[0].stats.endtime,
-                                channel=chan_name + 'V')[0][0][0]
-            chan_w = inv.select(station=st[0].stats.station,
-                                starttime=st[0].stats.starttime,
-                                endtime=st[0].stats.endtime,
-                                channel=chan_name + 'W')[0][0][0]
+            chan_u = inv.select(
+                station=st[0].stats.station, starttime=st[0].stats.starttime,
+                endtime=st[0].stats.endtime, channel=channelnames['U'])[0][0][0]
             
-            dip_u = chan_u.dip
-            dip_v = chan_v.dip
-            dip_w = chan_w.dip
-            azi_u = chan_u.azimuth
-            azi_v = chan_v.azimuth
-            azi_w = chan_w.azimuth
-
+            chan_v = inv.select(
+                station=st[0].stats.station, starttime=st[0].stats.starttime,
+                endtime=st[0].stats.endtime, channel=channelnames['V'])[0][0][0]
+            
+            chan_w = inv.select(
+                station=st[0].stats.station, starttime=st[0].stats.starttime,
+                endtime=st[0].stats.endtime, channel=channelnames['W'])[0][0][0]
+            
+            
+            sensor_dip, sensor_azi = get_sensor_directions_from_channel()
+        
+        # all combinations of traces in stream:
+        # - same number of samples, same start/endtime
         for tr_1 in st:
             for tr_2 in st:
-                tr_1.trim(starttime=tr_2.stats.starttime,
-                          endtime=tr_2.stats.endtime,
-                          nearest_sample=True)
-        st_ZNE = obspy.Stream()
-        try:
-            for tr_1 in st:
-                for tr_2 in st:
-                    # assert tr_1.stats.starttime == tr_2.stats.starttime
-                    #assert tr_1.stats.npts == tr_2.stats.npts
-                    if not tr_1.stats.npts == tr_2.stats.npts:
+                if tr_1 != tr_2:
+                    
+                    # ensure same number of samples
+                    if not(tr_1.stats.npts == tr_2.stats.npts):
                         tr_1.data = tr_1.data[0:tr_2.stats.npts]
+                    
+                    # trim start/end
+                    tr_1.trim(
+                        starttime=tr_2.stats.starttime, 
+                        endtime=tr_2.stats.endtime,
+                        nearest_sample=\
+                            constants.WAVEFORM_READ_ROTATE_NEAREST_SAMPLE)
+        
+        # init new stream for ZNE directions
+        st_ZNE = obspy.Stream()
 
-        except:
-            print('Problem with rotating to ZNE:')
-            print(st)
-        else:
-            if (len(st.select(channel=chan_name + 'U')) > 0 and
-                    len(st.select(channel=chan_name + 'V')) > 0 and
-                    len(st.select(channel=chan_name + 'W')) > 0):
-                data_ZNE = \
-                    rotate2zne(st.select(channel=chan_name + 'U')[0].data,
-                               azi_u,
-                               dip_u,
-                               st.select(channel=chan_name + 'V')[0].data,
-                               azi_v,
-                               dip_v,
-                               st.select(channel=chan_name + 'W')[0].data,
-                               azi_w,
-                               dip_w)
-                for channel, data in zip(['Z', 'N', 'E'], data_ZNE):
-                    tr = st.select(channel=chan_name + 'U')[0].copy()
-                    tr.stats.channel = chan_name + channel
-                    tr.data = data
-                    st_ZNE += tr
+        if len(st.select(channelnames['U'])) > 0 and \
+            len(st.select(channelnames['U'])) > 0 and \
+            len(st.select(channelnames['W'])) > 0:
+            
+            # ObsPy rotate2zne()
+            data_ZNE = rotate2zne(
+                st.select(channel=channelnames['U'])[0].data, 
+                sensor_azi.get('azi_u'), sensor_dip.get('dip_u'),
+                
+                st.select(channel=channelnames['V'])[0].data,
+                sensor_azi.get('azi_v'), sensor_dip.get('dip_v'),
+                
+                st.select(channel=channelnames['W'])[0].data,
+                sensor_azi.get('azi_w'), sensor_dip.get('dip_w'))
+            
+            for channel_char, data in zip(
+                constants.CHANNEL_ZNE_CODES, data_ZNE):
+                
+                tr = st.select(channel=channelnames['U'])[0].copy()
+                
+                tr.stats.channel = "{}{}".format(chan_name, channel_char)
+                tr.data = data
+                st_ZNE += tr
+    
     return st_ZNE
 
 
-def read_data(
-    fnam_complete, inv, kind, twin, fmin=1.0/20.0, station='ELYSE',
-    location_code='00', remove_response=True):
+def get_sensor_directions_from_channel(chan_u, chan_v, chan_w):
+            
+    sensor_dip = dict(
+        dip_u=chan_u.dip, dip_v=chan_v.dip, dip_w=chan_w.dip)
+    sensor_azi = dict(
+        azi_u=chan_u.azimuth, azi_v=chan_v.azimuth, 
+        azi_w=chan_w.azimuth)
     
-    # if type(fnam_complete) is list:
-    #     st = obspy.Stream()
-    #     for f in fnam_complete:
-    #         st += obspy.read(f,
-    #                          starttime=twin[0] - 300.,
-    #                          endtime=twin[1] + 300
-    #                          )
-    #     st.merge()
-    # else:
-    if len(glob.glob(fnam_complete)) > 0:
-        st = obspy.read(fnam_complete,
-                        starttime=twin[0] - 300.,
-                        endtime=twin[1] + 300,
-                        nearest_sample=False)
+    return sensor_dip, sensor_azi
         
-        # st = obspy.read(fnam_complete)
-        # st.trim(starttime=twin[0] - 300.,
-        #         endtime=twin[1] + 300)
+        
+def read_data(
+    fnam_complete, 
+    inv, 
+    kind, 
+    twin, 
+    fmin=constants.WAVEFORM_READ_FILTER_HIGHPASS_FMIN, 
+    station=constants.DEFAULT_STATION_NAME,
+    location_code=constants.DEFAULT_LOCATION_CODE,
+    remove_response=True):
+    
+    # read and process stream if file exists 
+    if len(glob.glob(fnam_complete)) > 0:
+        
+        starttime = twin[0] - \
+            constants.WAVEFORM_READ_INITIAL_START_END_TIME_MARGIN
+        
+        endtime = twin[1] + \
+            constants.WAVEFORM_READ_INITIAL_START_END_TIME_MARGIN
+        
+        st = obspy.read(
+            fnam_complete, starttime=starttime, endtime=endtime,
+            nearest_sample=constants.WAVEFORM_READ_INITIAL_NEAREST_SAMPLE)
+        
         st_seis = st.select(channel='?[LH]?')
+        
+        # if we have more than one traces, merge them into one
         st_seis.merge(method=1, fill_value='interpolate')
-        st_seis.detrend(type='demean')
-        st_seis.taper(0.1)
-        st_seis.filter('highpass', zerophase=True, freq=fmin / 2.)
-        st_seis.detrend()
-        # correct_subsample_shift(st_seis)
+        
+        # filter trace 
+        # - (1) ObsPy detrend/demean
+        # - (2) ObsPy taper(0.1)
+        # - (3) ObsPy filter highpass, zerophase, 0.5 * fmin (fmin=0.05)
+        # - (4) ObsPy detrend
+        
+        st_seis.detrend(type=constants.WAVEFORM_READ_FILTER_DETREND_DEMEAN)
+        st_seis.taper(
+            constants.WAVEFORM_READ_TAPER_MAX_PERCENTAGE, 
+            type=constants.WAVEFORM_READ_TAPER_TYPE)
+        
+        st_seis.filter(
+            btype=constants.WAVEFORM_READ_FILTER_BAND_TYPE, 
+            ftype=constants.WAVEFORM_READ_FILTER_FREQ_TYPE,
+            zerophase=constants.WAVEFORM_READ_FILTER_HIGHPASS_ZP, 
+            freq=0.5*fmin)
+        
+        st_seis.detrend(type=constants.WAVEFORM_READ_FILTER_DETREND_SIMPLE)
         
         if len(st_seis) > 0:
-            if st_seis[0].stats.starttime < utct('20190418T12:24'):
-                correct_shift(st_seis.select(channel='??U')[0], nsamples=-1)
+            
+            # correct subsample shift for traces earlier than a certain
+            # timestamp
+            if st_seis[0].stats.starttime < utct(
+                constants.WAVEFORM_READ_SUBSAMPLE_SHIFT_CORRECTION_BEFORE):
                 
+                correct_shift(st_seis.select(channel='??U')[0], nsamples=-1)
+            
+            # pre-filter, remove response
             for tr in st_seis:
                 fmax = tr.stats.sampling_rate * 0.5
-                pre_filt = (fmin / 2., fmin, fmax*1.2, fmax * 1.5)
+                pre_filt = (0.5 * fmin, fmin, fmax * 1.2, fmax * 1.5)
+                
                 if remove_response:
-                    remove_response_stable(tr, inv, output=kind,
-                                        pre_filt=pre_filt)
+                    remove_response_stable(
+                        tr, inv, output=kind, pre_filt=pre_filt)
 
             st_rot = create_ZNE_HG(
                 st_seis, inv=inv, station=station, location_code=location_code)
             
             if len(st_rot) > 0:
+                
+                # dig out MHZ channel, special treatment
                 if st_rot.select(channel='??Z')[0].stats.channel == 'MHZ':
-                    fnam = fnam_complete[0:-32] + 'BZC' + \
-                           fnam_complete[-29:-17] + \
-                           '58.BZC' + fnam_complete[-11:]
-                    tr_Z = obspy.read(fnam,
-                                      starttime=twin[0] - 900.,
-                                      endtime=twin[1] + 900)[0]
+                    
+                    # fnam = fnam_complete[0:-32] + 'BZC' + \
+                    #        fnam_complete[-29:-17] + \
+                    #        '58.BZC' + fnam_complete[-11:]
+                       
+                    fnam = "{}{}{}{}{}".format(
+                        fnam_complete[0:-32], 'BZC', fnam_complete[-29:-17],
+                        '58.BZC', fnam_complete[-11:])
+                    
+                    starttime = twin[0] - \
+                        constants.WAVEFORM_READ_TIME_MARGIN_MHZ, 
+                    endtime = twin[1] + \
+                        constants.WAVEFORM_READ_TIME_MARGIN_MHZ
+                        
+                    tr_Z = obspy.read(
+                        fnam, starttime=starttime, 
+                        endtime=twin[1] + endtime)[0]
+                    
                     fmax = tr_Z.stats.sampling_rate * 0.45
+                    
                     if remove_response:
-                        tr_Z.remove_response(inv,
-                                            pre_filt=(
-                                                0.005, 0.01, fmax, fmax * 1.2),
-                                            output=kind)
+                        tr_Z.remove_response(
+                            inv, 
+                            pre_filt=(
+                                constants.WAVEFORM_READ_MHZ_PRE_FILT_FMIN_1, 
+                                constants.WAVEFORM_READ_MHZ_PRE_FILT_FMIN_2,
+                            fmax, fmax * 1.2), output=kind)
+                        
                     st_tmp = st_rot.copy()
                     st_rot = obspy.Stream()
+                    
                     tr_Z.stats.channel = 'MHZ'
                     st_rot += tr_Z
                     st_rot += st_tmp.select(channel='?HN')[0]
                     st_rot += st_tmp.select(channel='?HE')[0]
 
                 try:
+                    
+                    # set 'NaN' values in traces to 0.0
                     for tr in st_rot:
-                        tr.data[np.isnan(tr.data)] = 0.
-                    st_rot.filter('highpass', zerophase=True, freq=fmin)
+                        tr.data[np.isnan(tr.data)] = 0.0
+                    
+                    st_rot.filter(
+                        btype=constants.WAVEFORM_READ_FILTER_BAND_TYPE, 
+                        ftype=constants.WAVEFORM_READ_FILTER_FREQ_TYPE,
+                        zerophase=constants.WAVEFORM_READ_FILTER_HIGHPASS_ZP, 
+                        freq=fmin)
                 
                 except(NotImplementedError):
                     # if there are gaps in the stream, return empty stream
                     st_rot = obspy.Stream()
                 
                 else:
+                    # trim traces to original time window
                     st_rot.trim(starttime=twin[0], endtime=twin[1])
+        
         else:
             st_rot = obspy.Stream()
+    
     else:
+        # return empty stream
         st_rot = obspy.Stream()
     
     return st_rot
 
 
 def remove_response_stable(tr, inv, **kwargs):
+    
     try:
         tr.remove_response(inv, **kwargs)
+    
     except ValueError:
+        
         filtered_inv = inv.select(
-            location=tr.stats.location, channel=tr.stats.channel,
-            starttime=tr.stats.starttime - 7 * 86400,
-            endtime=tr.stats.endtime + 7 * 86400)
+            location=tr.stats.location, 
+            channel=tr.stats.channel,
+            starttime=tr.stats.starttime - \
+                constants.WAVEFORM_READ_RESPONSE_FILTERED_TIME_MARGIN,
+            endtime=tr.stats.endtime + \
+                constants.WAVEFORM_READ_RESPONSE_FILTERED_TIME_MARGIN)
 
         if filtered_inv:
             last_epoch = filtered_inv[0][0][0]
-            last_epoch.start_date = tr.stats.starttime - 1.0
-            last_epoch.end_date = tr.stats.endtime + 1.0
+            last_epoch.start_date = tr.stats.starttime - \
+                constants.WAVEFORM_READ_RESPONSE_LASTEPOCH_TIME_MARGIN
+            last_epoch.end_date = tr.stats.endtime + \
+                constants.WAVEFORM_READ_RESPONSE_LASTEPOCH_TIME_MARGIN
 
             tr.remove_response(inventory=filtered_inv, **kwargs)
+        
         else:
             raise ValueError
 
@@ -311,16 +402,22 @@ def remove_response_stable(tr, inv, **kwargs):
 def remove_sensitivity_stable(tr, inv, **kwargs):
     try:
         tr.remove_sensitivity(inv, **kwargs)
+    
     except ValueError:
+        
         filtered_inv = inv.select(
             location=tr.stats.location, channel=tr.stats.channel,
-            starttime=tr.stats.starttime - 7 * 86400,
-            endtime=tr.stats.endtime + 7 * 86400)
+            starttime=tr.stats.starttime - \
+                constants.WAVEFORM_READ_RESPONSE_FILTERED_TIME_MARGIN,
+            endtime=tr.stats.endtime + \
+                constants.WAVEFORM_READ_RESPONSE_FILTERED_TIME_MARGIN)
 
         if filtered_inv:
             last_epoch = filtered_inv[0][0][0]
-            last_epoch.start_date = tr.stats.starttime - 1.0
-            last_epoch.end_date = tr.stats.endtime + 1.0
+            last_epoch.start_date = tr.stats.starttime - \
+                constants.WAVEFORM_READ_RESPONSE_LASTEPOCH_TIME_MARGIN
+            last_epoch.end_date = tr.stats.endtime + \
+                constants.WAVEFORM_READ_RESPONSE_LASTEPOCH_TIME_MARGIN
 
             tr.remove_sensitivity(inventory=filtered_inv, **kwargs)
         else:
@@ -328,6 +425,10 @@ def remove_sensitivity_stable(tr, inv, **kwargs):
 
 
 def correct_subsample_shift(st):
+    """
+    Seems to be DEPRECATED, replaced by correct_shift()
+    """
+    
     if len(st) > 1:
         shift = np.zeros(3)
         for i in range(1, 3):
@@ -353,12 +454,16 @@ def correct_subsample_shift(st):
 
 
 def correct_shift(tr, nsamples=-1):
+    
     ltrace = tr.stats.npts
+    
     if nsamples < 0:
         tr.data[0:ltrace + nsamples] = tr.data[-nsamples:ltrace]
+    
     elif nsamples > 0:
         tr.data[nsamples:ltrace] = tr.data[0:ltrace - nsamples]
-    return
+    
+    return True
 
 
 def __dayplot_set_x_ticks(ax, starttime, endtime, sol=False):
@@ -698,7 +803,9 @@ def spectral_fit(f: np.array,
                  fnam: str,
                  fmin: float,
                  fmax: float):
+    
     from scipy.optimize import curve_fit
+    
     fit_bol = np.array((f > float(fmin),
                         f < float(fmax))).all(axis=0)
 
@@ -706,6 +813,7 @@ def spectral_fit(f: np.array,
     signal_red = p_signal ** 2 - p_noise ** 2
     signal_red[signal_red < 0.] = 0.
     signal_red = np.sqrt(signal_red)
+    
     popt, pcov = curve_fit(complete_spec,
                            f[fit_bol],
                            signal_red[fit_bol],
@@ -735,18 +843,19 @@ def spectral_fit(f: np.array,
 
 
 def calc_mt_spec(tr, t_ref, tmin_amp, tmax_amp):
+    
     from mqs_reports.utils import detick
     import mtspec
 
     tr_detick = detick(tr, detick_nfsamp=5)
 
-    tr_amp = tr_detick.slice(starttime=t_ref + tmin_amp,
-                             endtime=t_ref + tmax_amp)
-    res = mtspec.mtspec(data=tr_amp.data,
-                        delta=tr_amp.stats.delta,
-                        time_bandwidth=2.5,
-                        statistics=True
-                        )
+    tr_amp = tr_detick.slice(
+        starttime=t_ref + tmin_amp, endtime=t_ref + tmax_amp)
+    
+    res = mtspec.mtspec(
+        data=tr_amp.data, delta=tr_amp.stats.delta, time_bandwidth=2.5,
+        statistics=True)
+    
     f = res[1]
     p = np.sqrt(res[0])
     p_low = np.sqrt(res[2][:, 0])
@@ -757,7 +866,9 @@ def calc_mt_spec(tr, t_ref, tmin_amp, tmax_amp):
 def linregression(x: np.array, y: np.array, q: float = 0.95) -> tuple:
     # Do a linear regression for value pairs X, Y and return error estimate
     # for slope and intercept
+    
     from scipy import stats
+    
     n = len(x)
     slope, intercept, r_value, p_value, slope_err = stats.linregress(x, y)
 
@@ -769,11 +880,14 @@ def linregression(x: np.array, y: np.array, q: float = 0.95) -> tuple:
 
 
 def calc_specgram(tr, fmin=1. / 50, fmax=1. / 2, w0=16):
+    
     from matplotlib.mlab import specgram
+    
     dt = tr.stats.delta
 
-    s, f, t = specgram(x=tr.data, NFFT=512, Fs=tr.stats.sampling_rate,
-                       noverlap=256, pad_to=1024)
+    s, f, t = specgram(
+        x=tr.data, NFFT=512, Fs=tr.stats.sampling_rate, noverlap=256, 
+        pad_to=1024)
 
     t = create_timevector(tr)
     f_bol = np.asarray(((fmin < f),
@@ -783,24 +897,28 @@ def calc_specgram(tr, fmin=1. / 50, fmax=1. / 2, w0=16):
 
 
 def calc_cwf(tr, fmin=1. / 50, fmax=1. / 2, w0=16):
+    
     from obspy.signal.tf_misfit import cwt
+    
     dt = tr.stats.delta
 
-    scalogram = abs(cwt(tr.data, dt, w0=w0, nf=200,
-                        fmin=fmin, fmax=fmax))
+    scalogram = abs(
+        cwt(tr.data, dt, w0=w0, nf=200, fmin=fmin, fmax=fmax))
 
     t = create_timevector(tr)
     # t = np.linspace(0, dt * tr.stats.npts, tr.stats.npts)
     f = np.logspace(np.log10(fmin),
                     np.log10(fmax),
                     scalogram.shape[0])
+    
     return scalogram ** 2, f, t
 
 
 def create_timevector(tr):
-    timevec = [utct(t +
-                    float(tr.stats.starttime)).datetime
-               for t in tr.times()]
+    
+    timevec = [
+        utct(t + float(tr.stats.starttime)).datetime for t in tr.times()]
+    
     return timevec
 
 
@@ -809,9 +927,12 @@ def uncertainty_from_pdf(variable: np.array, p: np.array):
     Fit a Gaussian through the pdf expressed by variable, p
     From Savas Ceylan
     """
+    
     from scipy.interpolate import UnivariateSpline
+    
     spline = UnivariateSpline(variable, p - np.nanmax(p) / 4, s=0)
     _roots = spline.roots()
+    
     # print(_roots, variable[p == np.nanmax(p)], np.diff(_roots) / 2.)
 
     if len(_roots) > 1:
