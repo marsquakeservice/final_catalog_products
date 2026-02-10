@@ -608,7 +608,7 @@ def _plot_spectra_top(
     if streaminfo_plot["LF"] is not None:
         ax.text(SPECTRA_TEXT_BOXES_XCOORD['streamid_lf'], 
             SPECTRA_TEXT_BOXES_YCOORD, 
-            "{}".format(streaminfo_plot["LF_orientation"]),
+            streaminfo_plot["LF_orientation"],
             verticalalignment='center', horizontalalignment='center',
             transform=ax.transAxes, bbox=SPECTRA_TEXT_BOX_PARAMS,
             color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
@@ -616,7 +616,7 @@ def _plot_spectra_top(
     if streaminfo_plot["HF"] is not None:
         ax.text(SPECTRA_TEXT_BOXES_XCOORD['streamid_hf'], 
             SPECTRA_TEXT_BOXES_YCOORD, 
-            "{}".format(streaminfo_plot["HF_orientation"]),
+            streaminfo_plot["HF_orientation"],
             verticalalignment='center', horizontalalignment='center',
             transform=ax.transAxes, bbox=SPECTRA_TEXT_BOX_PARAMS,
             color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
@@ -646,9 +646,12 @@ def _set_axis_limits_psd_denoised(
         data_new = data[0:npts - int((1.0 - ymin_scale) * npts)]
         
         # add 10% to computed minimum
-        ylim_min = 1.1 * np.min(data_new)
+        try:
+            ylim_min = 1.1 * np.min(data_new)
+            axis.set_ylim(ymin=ylim_min)
         
-        axis.set_ylim(ymin=ylim_min)
+        except Exception:
+            pass
     
     return axis 
 
