@@ -116,7 +116,7 @@ SPECTRA_TEXT_BOXES_XCOORD = {
     'origin_time': 0.15,
     'raw_denoised_deglitched': 0.30,
     'streamid_lf': 0.5,
-    'stramid_hf': 0.7,
+    'streamid_hf': 0.7,
     'filtercode': 0.85}
 
 SPECTRA_TEXT_BOXES_YCOORD = 1.05
@@ -639,14 +639,16 @@ def _set_axis_limits_psd_denoised(
     """
     
     npts = len(data)
+    npts_new = int((1.0 - ymin_scale) * npts)
     
     # set y minimum at ymin_scale (0-1) of x-axis
-    data_new = data[0:npts - int((1.0 - ymin_scale) * npts)]
-    
-    # add 10% to computed minimum
-    ylim_min = 1.1 * np.min(data_new)
-    
-    axis.set_ylim(ymin=ylim_min)
+    if npts_new > 0:
+        data_new = data[0:npts - int((1.0 - ymin_scale) * npts)]
+        
+        # add 10% to computed minimum
+        ylim_min = 1.1 * np.min(data_new)
+        
+        axis.set_ylim(ymin=ylim_min)
     
     return axis 
 
