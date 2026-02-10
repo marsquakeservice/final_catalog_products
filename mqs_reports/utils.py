@@ -60,7 +60,7 @@ def create_fnam_event(timestamp, station, sc3dir, filenam_inst):
     
     dirnam = pjoin(
         sc3dir, 
-        "op/data/waveform/{04d}/XB/{}/".format(utct(timestamp).year, station))
+        "op/data/waveform/{:04d}/XB/{}/".format(utct(timestamp).year, station))
 
     dirnam_inst = pjoin(dirnam, '???.D')
     hour = utct(timestamp).strftime('%H')

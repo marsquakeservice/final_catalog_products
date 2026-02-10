@@ -164,6 +164,13 @@ WF_CHANNEL_CONFIG = {
 
 ## default plot parameters
 
+# spectra 
+
+
+
+
+# filterbanks 
+
 PLOT_FILTERBANK_FMAX_LF = 8.0
 PLOT_FILTERBANK_FMIN_LF = 1.0 / 32.0
 

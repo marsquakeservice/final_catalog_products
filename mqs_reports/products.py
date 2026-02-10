@@ -52,6 +52,7 @@ from mqs_reports.utils import envelope_smooth
 from mqs_reports.utils import uncertainty_from_pdf
 
 # from marsprocessingtools import catalog as marscatalog
+from marsprocessingtools import utils as marsutils
 
 sns.set_theme(style="darkgrid")
 
@@ -96,6 +97,8 @@ COLOR_SPECTRA_DICT = {
     "noise_high_sps": COLOR_SPECTRA_NOISE_HIGH_SPS, 
     "phase_p": COLOR_SPECTRA_P_PHASE}
 
+COLOR_SPECTRA_TOP_OT = "black"
+
 COLOR_SPECTRA_BOTTOM_FREQ_BOX = "darkgrey"
 COLOR_SPECTRA_BOTTOM_A0 = "cornflowerblue"
 COLOR_SPECTRA_BOTTOM_F_CENTER = "crimson"
@@ -126,11 +129,19 @@ SPECTRA_TEXT_BOX_PARAMS = {
     'edgecolor': COLOR_SPECTRA_TOP_TEXT_BOXES, 
     'pad': SPECTRA_TEXT_BOXES_PADDING}
 
-SPECTRA_PLOT_TOP_XLABEL = "Time after origin time [seconds]"
+
+SPECTRA_PLOT_TOP_XLABEL = "Time [seconds]"
+SPECTRA_PLOT_TOP_XLABEL_TEMPLATE = "Time after {} [seconds]"
+
 SPECTRA_PLOT_TOP_YLABEL = "Displacement ({}) [m]"
 
 SPECTRA_PLOT_BOTTOM_XLABEL = "Frequency [Hz]"
 SPECTRA_PLOT_BOTTOM_YLABEL = "Displacement PSD [dB]"
+
+SPECTRA_PLOT_BOTTOM_YAXIS_MIN_RANGE = 0.95
+
+SPECTRA_PLOT_FILTER_BOX_LABEL_1 = r'$\mathrm{filter:\,HP_{BW}^{ZP}('
+SPECTRA_PLOT_FILTER_BOX_LABEL_2 = r'\,Hz)}$'
 
 
 def plot_spectra(
@@ -412,7 +423,8 @@ def plot_spectra(
     
             streaminfo_plot = dict(
                 LF=None, HF=None, event_name=event.name, wf_type=wf_type,
-                origin_time_screen=event.origin_time_screen)
+                origin_time_screen=event.origin_time_screen,
+                origin_time=event.origin_time)
             
             if len(LF_streaminfo) > 0:
                 LF_streaminfo_with_orientation = add_orientation_to_stream_info(
@@ -458,7 +470,6 @@ def _plot_spectra_top(
     
     # this is stream_info with orientation
     stream_info_orientation = f'{tr.id}@{tr.stats.sampling_rate}'
-    # ax.set(xlabel=stream_info_orientation)
     
     stream_info_hflf = ""
     if streaminfo_plot["HF"] is not None:
@@ -466,7 +477,10 @@ def _plot_spectra_top(
     elif streaminfo_plot["LF"] is not None:
         stream_info_hflf = "LF"
     
-    ax.set(xlabel=SPECTRA_PLOT_TOP_XLABEL)
+    starttime_screen = marsutils.get_rounded_timestamps(
+        tr.stats.starttime).get('TIMESTAMP_READABLE_FORMAT')
+    
+    ax.set(xlabel=SPECTRA_PLOT_TOP_XLABEL_TEMPLATE.format(starttime_screen))
     ax.set(ylabel=SPECTRA_PLOT_TOP_YLABEL.format(stream_info_hflf))
 
     to_tr_time = lambda time_str: UTCDateTime(time_str) - tr.stats.starttime
@@ -482,8 +496,10 @@ def _plot_spectra_top(
     s_start     = to_tr_time(windows['S_spectral_start'])
     s_end       = to_tr_time(windows['S_spectral_end'])
 
+    origin_time_plot = to_tr_time(streaminfo_plot['origin_time'])
+    
     # plot filtered trace
-    # NOTE: axes range is automatic
+    # NOTE: axis range is automatic
     trace_filtered = ax.plot(
         tr.times(), tr.data, color=COLOR_SPECTRA_FILTERED_TRACE, linestyle='-',
         label="filtered trace")
@@ -547,8 +563,12 @@ def _plot_spectra_top(
             fitter.get_pick('x2') or fitter.get_pick('y2') or \
                 fitter.get_pick('start')
 
-    # mark the seismic phases (width is based on plot range, no uncertainty)
+
+    # mark origin time and seismic phases 
+    # (width is based on plot range, no uncertainty)
     width = (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.005
+    
+    _add_origin_time_marker(ax, origin_time_plot)
     
     if p_phase:
         P = to_tr_time(p_phase)
@@ -601,12 +621,57 @@ def _plot_spectra_top(
             transform=ax.transAxes, bbox=SPECTRA_TEXT_BOX_PARAMS,
             color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
     
+    filterbox_text_sub = SPECTRA_PLOT_FILTER_BOX_LABEL_1 + \
+        str(constants.WAVEFORM_READ_FILTER_HIGHPASS_FMIN) + \
+        SPECTRA_PLOT_FILTER_BOX_LABEL_2
+    
     ax.text(SPECTRA_TEXT_BOXES_XCOORD['filtercode'], SPECTRA_TEXT_BOXES_YCOORD, 
-        "filter:",
-        verticalalignment='center', horizontalalignment='center',
+        filterbox_text_sub, verticalalignment='center', 
+        horizontalalignment='center',
         transform=ax.transAxes, bbox=SPECTRA_TEXT_BOX_PARAMS,
         color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
     
+
+def _set_axis_limits_psd_denoised(
+    axis, data, ymin_scale=SPECTRA_PLOT_BOTTOM_YAXIS_MIN_RANGE):
+    """
+    Set minimum of y axis for denoised PSD.
+    """
+    
+    npts = len(data)
+    
+    # set y minimum at ymin_scale (0-1) of x-axis
+    data_new = data[0:npts - int((1.0 - ymin_scale) * npts)]
+    
+    # add 10% to computed minimum
+    ylim_min = 1.1 * np.min(data_new)
+    
+    axis.set_ylim(ymin=ylim_min)
+    
+    return axis 
+
+
+def _set_axis_limits(axis, data, wf_type, xlog=False, ylog=False):
+    """
+    TODO(fab): general axis limits
+    """
+    
+    # y axis limits
+    ylim_min, ylim_max = axis.get_ylim()
+    
+    # set y axis minimum to 50% if DENOISED
+    if wf_type == "DENOISED":
+        
+        if ylog:
+            ylim_min = np.log10(0.5 * ylim_min)
+            
+        else:
+            ylim_min = 0.5 * ylim_min
+    
+    axis.set_ylim(ymin=ylim_min)
+    
+    return axis 
+
 
 def _plot_spectra_bottom(
     axP, axS, fitter, streaminfo_plot, component, fitting_parameters, results, 
@@ -697,6 +762,8 @@ def _plot_spectra_bottom(
     fmin = fitting_parameters.get_value(component, f'fminP')
     fmax = fitting_parameters.get_value(component, f'fmaxP')
     
+    ## grey boxes
+    
     if fmin and fmax:
         axP.axvspan(
             xmin=axP.get_xlim()[0], xmax=fmin, 
@@ -773,9 +840,25 @@ def _plot_spectra_bottom(
     # fc
     _add_fc_marker(axP, axS, fitting_parameters, component)
     
+    # axis limits
+    if wf_type == "DENOISED":
+        axP = _set_axis_limits_psd_denoised(axP, P_psd)
+        axS = _set_axis_limits_psd_denoised(axS, S_psd)
+    
     # automatic legends
     _ = axP.legend(loc='lower left')
     _ = axS.legend(loc='lower left')
+
+
+def _add_origin_time_marker(axis, ot_plot):
+    
+    axis.axvline(x=ot_plot, color=COLOR_SPECTRA_TOP_OT, alpha=0.3)
+    
+    yaxis_min = axis.get_ylim()[0]
+    ot_label_ycoord = yaxis_min + 0.05 * np.abs(yaxis_min)
+    
+    axis.annotate('OT', xy=(ot_plot, ot_label_ycoord), 
+        color=COLOR_SPECTRA_TOP_OT, alpha=0.5)
 
 
 def _add_a0_marker(axP, axS, fitting_parameters, component):

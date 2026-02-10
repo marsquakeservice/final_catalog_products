@@ -702,8 +702,9 @@ class Event(object):
         # Try for 65.EH? (100sps SP)
         filenam_SP = 'XB.ELYSE.65.EH?.D.%04d.%03d'
         fnam_SP = create_fnam_event(
+            timestamp=self.picks['start'],
             filenam_inst=filenam_SP, station=station,
-            sc3dir=sc3dir, time=self.picks['start'])
+            sc3dir=sc3dir)
 
         if len(glob(fnam_SP)) > 0:
             
@@ -722,8 +723,9 @@ class Event(object):
         filenam_VBB100 = 'XB.ELYSE.00.HH?.D.%04d.%03d'
         
         fnam_VBB100 = create_fnam_event(
+            timestamp=self.picks['start'],
             filenam_inst=filenam_VBB100, station=station,
-            sc3dir=sc3dir, time=self.picks['start'])
+            sc3dir=sc3dir)
         
         self.waveforms_VBB100 = read_data(
             fnam_VBB100, inv=inv, kind=kind, fmin=fmin_VBB,
@@ -740,8 +742,9 @@ class Event(object):
         # Try for 02.BH? (20sps VBB)
         filenam_VBB = 'XB.ELYSE.02.BH?.D.%04d.%03d'
         fnam_VBB = create_fnam_event(
+            timestamp=self.picks['start'],
             filenam_inst=filenam_VBB, station=station,
-            sc3dir=sc3dir, time=self.picks['start'])
+            sc3dir=sc3dir)
         
         self.waveforms_VBB = read_data(
             fnam_VBB, inv=inv,
@@ -758,8 +761,9 @@ class Event(object):
             filenam_VBB = 'XB.ELYSE.03.BH?.D.%04d.%03d'
 
             fnam_VBB = create_fnam_event(
+                timestamp=self.picks['start'],
                 filenam_inst=filenam_VBB, station=station,
-                sc3dir=sc3dir, time=self.picks['start'])
+                sc3dir=sc3dir)
 
             self.waveforms_VBB = read_data(
                 fnam_VBB, inv=inv,
@@ -776,8 +780,9 @@ class Event(object):
             filenam_VBB = 'XB.ELYSE.15.HL?.D.%04d.%03d'
 
             fnam_VBB = create_fnam_event(
+                timestamp=self.picks['start'],
                 filenam_inst=filenam_VBB, station=station,
-                sc3dir=sc3dir, time=self.picks['start'])
+                sc3dir=sc3dir,)
 
             self.waveforms_VBB = read_data(
                 fnam_VBB, inv=inv,
@@ -796,8 +801,9 @@ class Event(object):
             filenam_VBB = 'XB.ELYSE.07.BL?.D.%04d.%03d'
 
             fnam_VBB = create_fnam_event(
+                timestamp=self.picks['start'],
                 filenam_inst=filenam_VBB, station=station,
-                sc3dir=sc3dir, time=self.picks['start'])
+                sc3dir=sc3dir)
 
             self.waveforms_VBB = read_data(
                 fnam_VBB, inv=inv,
@@ -836,8 +842,9 @@ class Event(object):
         self.waveforms_VBB100 = None
 
         fnam_VBB = create_fnam_event(
+            timestamp=self.picks['start'],
             filenam_inst='XB.ELYDG.00.BH?.D.%04d.%03d', station='ELYDG',
-            sc3dir=sc3dir, time=self.picks['start'])
+            sc3dir=sc3dir)
         
         if len(glob(fnam_VBB)) % 3 == 0:
             self.waveforms_VBB = read_data(
@@ -872,8 +879,9 @@ class Event(object):
         # use location code 03. The other ones are previous computations 
         # with different parameters and event-based only
         fnam_VBB = create_fnam_event(
+            timestamp=self.picks['start'],
             filenam_inst='XB.ELYDL.03.BH?.D.%04d.%03d', station='ELYDL',
-            sc3dir=sc3dir, time=self.picks['start'])
+            sc3dir=sc3dir)
         
         if len(glob(fnam_VBB)) % 3 == 0:
             self.waveforms_VBB = read_data(
