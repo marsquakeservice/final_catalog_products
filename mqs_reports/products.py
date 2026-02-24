@@ -138,7 +138,8 @@ SPECTRA_PLOT_TOP_YLABEL = "Displacement ({}) [m]"
 SPECTRA_PLOT_BOTTOM_XLABEL = "Frequency [Hz]"
 SPECTRA_PLOT_BOTTOM_YLABEL = "Displacement PSD [dB]"
 
-SPECTRA_PLOT_BOTTOM_YAXIS_MIN_RANGE = 0.95
+SPECTRA_PLOT_BOTTOM_YAXIS_MIN_RANGE = 0.85
+SPECTRA_PLOT_BOTTOM_FC_LABEL_OFFSET = 1.0
 
 SPECTRA_PLOT_FILTER_BOX_LABEL_1 = r'$\mathrm{filter:\,HP_{BW}^{ZP}('
 SPECTRA_PLOT_FILTER_BOX_LABEL_2 = r'\,Hz)}$'
@@ -638,6 +639,9 @@ def _set_axis_limits_psd_denoised(
     Set minimum of y axis for denoised PSD.
     """
     
+    xlim_min, xlim_max = axis.get_xlim()
+    ylim_min, ylim_max = axis.get_ylim()
+    
     npts = len(data)
     npts_new = int((1.0 - ymin_scale) * npts)
     
@@ -653,7 +657,7 @@ def _set_axis_limits_psd_denoised(
         except Exception:
             pass
     
-    return axis 
+    return axis, (xlim_min, xlim_max), (ylim_min, ylim_max)
 
 
 def _set_axis_limits(axis, data, wf_type, xlog=False, ylog=False):
@@ -682,6 +686,12 @@ def _plot_spectra_bottom(
     axP, axS, fitter, streaminfo_plot, component, fitting_parameters, results, 
     wf_type):
 
+    xlim_pair_p = ()
+    xlim_pair_s = ()
+    
+    ylim_pair_p = ()
+    ylim_pair_s = ()
+    
     # P phase subplot
     axP.set_title(f'P phase [{component}]')
     axP.set(
@@ -839,16 +849,26 @@ def _plot_spectra_bottom(
             ax=axS, x=noise_freq, y=fit, label='best fit', 
             color=colors["phase_s"])
 
-    # A0
-    _add_a0_marker(axP, axS, fitting_parameters, component)
-
-    # fc
-    _add_fc_marker(axP, axS, fitting_parameters, component)
+    # A0, only lines (horizontal)
+    _add_a0_marker(
+        axP, axS, fitting_parameters, component, label=False)
     
-    # axis limits
+    # axis limits, shorten y axis for DENOISED
     if wf_type == "DENOISED":
-        axP = _set_axis_limits_psd_denoised(axP, P_psd)
-        axS = _set_axis_limits_psd_denoised(axS, S_psd)
+        axP, xlim_pair_p, ylim_pair_p = _set_axis_limits_psd_denoised(
+            axP, P_psd)
+        
+        axS, xlim_pair_s, ylim_pair_s = _set_axis_limits_psd_denoised(
+            axS, S_psd)
+    
+    # A0, only label
+    _add_a0_marker(
+        axP, axS, fitting_parameters, component, xlim_pair_p, xlim_pair_s,
+        lines=False)
+
+    # fc, lines/label (vertical, need updated ymin)
+    _add_fc_marker(
+        axP, axS, fitting_parameters, component, ylim_pair_p, ylim_pair_s)
     
     # automatic legends
     _ = axP.legend(loc='lower left')
@@ -866,52 +886,96 @@ def _add_origin_time_marker(axis, ot_plot):
         color=COLOR_SPECTRA_TOP_OT, alpha=0.5)
 
 
-def _add_a0_marker(axP, axS, fitting_parameters, component):
+def _add_a0_marker(
+    axP, axS, fitting_parameters, component, xlim_pair_p=(), xlim_pair_s=(),
+    lines=True, label=True):
+    """
+    Add horizontal lines for A0 and uncertainty, label.
     
-    axP.axhline(y=fitting_parameters.get_value(component, 'A0'), 
+    """
+    
+    if len(xlim_pair_p) == 0:
+        xlim_pair_p = axP.get_xlim()
+        
+    if len(xlim_pair_s) == 0:
+        xlim_pair_s = axS.get_xlim()
+    
+    if lines:
+        axP.axhline(y=fitting_parameters.get_value(component, 'A0'), 
             color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3)
-    axP.axhline(y=fitting_parameters.get_value(component, 'A0-low'), 
-                color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3, linestyle='dashed')
-    axP.axhline(y=fitting_parameters.get_value(component, 'A0-high'), 
-                color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3, linestyle='dashed')
-    axP.annotate('A0',
-            xy=(axP.get_xlim()[0], 
-                fitting_parameters.get_value(component, 'A0')),
+        axP.axhline(y=fitting_parameters.get_value(component, 'A0-low'), 
+            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3, linestyle='dashed')
+        axP.axhline(y=fitting_parameters.get_value(component, 'A0-high'), 
+            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3, linestyle='dashed')
+    
+        axS.axhline(y=fitting_parameters.get_value(component, 'A0'), 
+            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3)
+        axS.axhline(y=fitting_parameters.get_value(component, 'A0-low'), 
+            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3, linestyle='dashed')
+        axS.axhline(y=fitting_parameters.get_value(component, 'A0-high'), 
+            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3, linestyle='dashed')
+    
+    if label:
+        axP.annotate(
+            'A0',
+            xy=(xlim_pair_p[0], fitting_parameters.get_value(component, 'A0')),
             color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.5)
 
-    axS.axhline(y=fitting_parameters.get_value(component, 'A0'), 
-            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3)
-    axS.axhline(y=fitting_parameters.get_value(component, 'A0-low'), 
-                color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3, linestyle='dashed')
-    axS.axhline(y=fitting_parameters.get_value(component, 'A0-high'), 
-                color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3, linestyle='dashed')
-    axS.annotate('A0',
-            xy=(axS.get_xlim()[0], 
-                fitting_parameters.get_value(component, 'A0')),
+        axS.annotate(
+            'A0',
+            xy=(xlim_pair_s[0], fitting_parameters.get_value(component, 'A0')),
             color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.5)
 
 
-def _add_fc_marker(axP, axS, fitting_parameters, component):
+def _add_fc_marker(
+    axP, axS, fitting_parameters, component, ylim_pair_p=(), ylim_pair_s=(),
+    lines=True, label=True):
+    """
+    Add horizontal lines for fc and uncertainty, label.
     
-    axP.axvline(x=fitting_parameters.get_value(component, 'cornerfrequency'),
-        color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3)
-    axP.axvline(x=fitting_parameters.get_value(component, 'cornerfreq-low'), 
-        color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3, linestyle='dashed')
-    axP.axvline(x=fitting_parameters.get_value(component, 'cornerfreq-high'),
-        color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3, linestyle='dashed')
-    axP.annotate(
-        'fc', xy=(fitting_parameters.get_value(component, 'cornerfrequency'),
-        axP.get_ylim()[0] + 1), color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.5)
-
-    axS.axvline(x=fitting_parameters.get_value(component, 'cornerfrequency'),
-        color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3)
-    axS.axvline(x=fitting_parameters.get_value(component, 'cornerfreq-low'), 
-        color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3, linestyle='dashed')
-    axS.axvline(x=fitting_parameters.get_value(component, 'cornerfreq-high'),
-        color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3, linestyle='dashed')
-    axS.annotate(
-        'fc', xy=(fitting_parameters.get_value(component, 'cornerfrequency'),
-        axS.get_ylim()[0] + 1), color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.5)
+    """
+    
+    if len(ylim_pair_p) == 0:
+        ylim_pair_p = axP.get_ylim()
+        
+    if len(ylim_pair_s) == 0:
+        ylim_pair_s = axS.get_ylim()
+    
+    if lines:
+        axP.axvline(
+            x=fitting_parameters.get_value(component, 'cornerfrequency'),
+            color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3)
+        axP.axvline(
+            x=fitting_parameters.get_value(component, 'cornerfreq-low'), 
+            color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3, linestyle='dashed')
+        axP.axvline(
+            x=fitting_parameters.get_value(component, 'cornerfreq-high'),
+            color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3, linestyle='dashed')
+        
+        axS.axvline(
+            x=fitting_parameters.get_value(component, 'cornerfrequency'),
+            color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3)
+        axS.axvline(
+            x=fitting_parameters.get_value(component, 'cornerfreq-low'), 
+            color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3, linestyle='dashed')
+        axS.axvline(
+            x=fitting_parameters.get_value(component, 'cornerfreq-high'),
+            color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3, linestyle='dashed')
+    
+    if label:
+        axP.annotate(
+            'fc', 
+            xy=(
+                fitting_parameters.get_value(component, 'cornerfrequency'),
+                ylim_pair_p[0] + SPECTRA_PLOT_BOTTOM_FC_LABEL_OFFSET),
+            color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.5)
+        
+        axS.annotate(
+            'fc', 
+            xy=(
+                fitting_parameters.get_value(component, 'cornerfrequency'),
+                ylim_pair_s[0] + SPECTRA_PLOT_BOTTOM_FC_LABEL_OFFSET), 
+            color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.5)
 
 
 def plot_filterbanks(
