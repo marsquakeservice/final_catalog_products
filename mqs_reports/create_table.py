@@ -774,10 +774,15 @@ if __name__ == '__main__':
                             args.data_type, smprate, normtype, rotate))
                     
                     plot_filterbanks(
-                        catalog, dir_out=DIR_OUT_FILTERBANKS, annotations=ann, 
-                        wf_type=args.data_type, normtype=normtype, 
-                        rotate=rotate, smprate=smprate,
-                        orientation=args.orientation, norm=normtypes,
+                        catalog, 
+                        dir_out=DIR_OUT_FILTERBANKS, 
+                        annotations=ann, 
+                        wf_type=args.data_type, 
+                        normtype=normtype, 
+                        rotate=rotate, 
+                        smprate=smprate,
+                        orientation=args.orientation, 
+                        norm=normtypes,
                         force_products=args.force_products,
                         calculate_filterbanks=args.calc_filterbanks,
                         plot_filterbanks=make_plot)

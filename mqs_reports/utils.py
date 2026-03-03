@@ -18,8 +18,10 @@ import glob
 
 from os.path import join as pjoin
 
-from matplotlib import mlab as mlab
 import matplotlib.pyplot as plt
+from matplotlib import mlab as mlab
+from matplotlib.patches import Rectangle
+
 import numpy as np
 
 import obspy
@@ -35,6 +37,8 @@ from scipy.signal import hilbert
 import mqs_reports.constants as constants
 
 from mqs_reports.constants import SEC_PER_DAY_EARTH, SEC_PER_DAY_MARS
+
+from marsprocessingtools import utils as marsutils
 
 
 def solify(UTC_time, sol0=constants.TIMESTAMP_SOL0):
@@ -947,8 +951,319 @@ def uncertainty_from_pdf(variable: np.array, p: np.array):
 
 def add_orientation_to_stream_info(stream_info, orientation):
     
+    stream_info_split = stream_info.split('@')
+    
+    stream_info_split_1 = stream_info_split[0]
+    stream_info_split_2 = ""
+    
+    if len(stream_info_split) > 1:
+        stream_info_split_2 = stream_info_split[1]
+        
     stream_info_with_orientation = "{}{}@{}".format(
-        stream_info.split('@')[0], orientation, stream_info.split('@')[1])
+        stream_info_split_1, orientation, stream_info_split_2)
     
     return stream_info_with_orientation
+
+
+def get_streaminfo(event, component=None):
+    
+    streaminfo = dict(
+        LF_streaminfo="", LF_streaminfo_with_orientation="", 
+        HF_streaminfo="", HF_streaminfo_with_orientation="")
+    
+    if event.spectra is None:
+        return streaminfo
+    
+    if 'stream_info' in event.spectra and \
+            event.spectra['stream_info'].startswith("LF"):
+        streaminfo['LF_streaminfo'] = event.spectra['stream_info']
+        
+    if 'stream_info' in event.spectra_SP and \
+            event.spectra_SP['stream_info'].startswith("HF"):
+        streaminfo['HF_streaminfo'] = event.spectra_SP['stream_info']
+    
+    if streaminfo['LF_streaminfo'] and component is not None:
+        streaminfo['LF_streaminfo_with_orientation'] = \
+            add_orientation_to_stream_info(
+                streaminfo['LF_streaminfo'], component)
+        
+    if streaminfo['HF_streaminfo'] and component is not None:
+        streaminfo['HF_streaminfo_with_orientation'] = \
+            add_orientation_to_stream_info(
+                streaminfo['HF_streaminfo'], component)
+    
+    return streaminfo
+            
+
+def get_stream_from_instrument(event, instrument):
+    
+    if instrument == 'VBB':
+        stream = event.waveforms_VBB.copy()
+        
+    elif instrument == 'SP':
+        stream = event.waveforms_SP.copy()
+        
+    elif instrument == 'VBB100':
+        stream = event.waveforms_VBB100.copy()
+        
+    elif instrument == 'VBB+VBB100':
+        stream = event.waveforms_VBB100.copy()
+        
+    elif instrument == 'VBB+SP':
+        stream = event.waveforms_SP.copy()
+        
+    else:
+        raise ValueError(f'Invalid value for instrument: {instrument}')
+    
+    return stream 
+   
+   
+def set_streaminfo_plot(
+    event, streaminfo, fmin, fmax, lf=None, hf=None, ref_time=None, 
+    ref_time_type=None, wf_type="RAW"):
+
+    streaminfo_plot = dict(
+        LF=lf, 
+        HF=hf, 
+        event_name=event.name, 
+        origin_time_screen=event.origin_time_screen,
+        origin_time=event.origin_time,
+        mars_event_type_short=event.mars_event_type_short,
+        location_quality_1char=event.quality,
+        fmin=fmin, 
+        fmax=fmax, 
+        ref_time=ref_time,
+        ref_time_type=ref_time_type,
+        p_pick_time_screen=None,
+        wf_type=wf_type)
+    
+    if ref_time is not None:
+        streaminfo_plot['p_pick_time_screen'] = \
+            marsutils.get_rounded_timestamps(ref_time).get(
+                'TIMESTAMP_READABLE_FORMAT')
+
+    LF_streaminfo = None 
+    LF_streaminfo_with_orientation = None
+    HF_streaminfo = None 
+    HF_streaminfo_with_orientation = None 
+    
+    if lf is None:
+        LF_streaminfo = streaminfo.get("LF_streaminfo")
+        LF_streaminfo_with_orientation = streaminfo.get(
+            "LF_streaminfo_with_orientation")
+        
+    if hf is None:
+        HF_streaminfo = streaminfo.get("HF_streaminfo")
+        HF_streaminfo_with_orientation = streaminfo.get(
+            "HF_streaminfo_with_orientation")
+        
+    if LF_streaminfo is not None:
+        streaminfo_plot["LF"] = LF_streaminfo
+        streaminfo_plot["LF_orientation"] = LF_streaminfo_with_orientation
+
+    if HF_streaminfo is not None:
+        streaminfo_plot["HF"] = HF_streaminfo
+        streaminfo_plot["HF_orientation"] = HF_streaminfo_with_orientation
+    
+    return streaminfo_plot
+
+
+def get_stream_description(event, instrument):
+        
+    if instrument == 'VBB':
+        st_LF = event.waveforms_VBB.select(channel='??[ENZ]').copy()
+        st_HF = event.waveforms_VBB.select(channel='??[ENZ]').copy()
+
+        st_LF_desc = f'LF: {st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
+        st_HF_desc = ''
+    
+    elif instrument == 'VBB100':
+        st_LF = event.waveforms_VBB100.select(channel='??[ENZ]').copy()
+        st_HF = event.waveforms_VBB100.select(channel='??[ENZ]').copy()
+        
+        st_LF_desc = ''
+        st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+    
+    elif instrument == 'SP':
+        st_LF = event.waveforms_SP.select(channel='??[ENZ]').copy()
+        st_HF = event.waveforms_SP.select(channel='??[ENZ]').copy()
+        st_LF_desc = ''
+        st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+    
+    elif instrument == 'VBB+VBB100':
+        st_LF = event.waveforms_VBB.select(channel='??[ENZ]').copy()
+        st_HF = event.waveforms_VBB100.select(channel='??[ENZ]').copy()
+        
+        st_LF_desc = f'LF: {st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
+        st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+    
+    elif instrument == 'VBB+SP':
+        st_LF = event.waveforms_VBB.select(channel='??[ENZ]').copy()
+        st_HF = event.waveforms_SP.select(channel='??[ENZ]').copy()
+        
+        st_LF_desc = f'LF: {st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
+        st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+    
+    else:
+        raise ValueError(
+            "get_stream_description: invalid value for instrument: {}".format(
+                instrument))
+    
+    return st_LF, st_HF, st_LF_desc, st_HF_desc
+    
+    
+def get_color_for_marker(phase):
+    
+    if phase in ('P', 'PP'):
+        markercolor = constants.COLOR_FILTERBANK_P_PHASE
+    elif phase in ('S', 'SS'):
+        markercolor = constants.COLOR_FILTERBANK_S_PHASE
+    else:
+        markercolor = constants.COLOR_FILTERBANK_START_END_PHASE
+        
+    return markercolor
+
+
+def mark_glitch(
+    ax: list, 
+    x0: float, 
+    x1: float, 
+    ymin: float=constants.FILTERBANK_PLOT_GLITCH_YMIN_DEFAULT, 
+    height: float=constants.FILTERBANK_PLOT_GLITCH_HEIGHT_DEFAULT, 
+    **kwargs):
+    """
+    Mark glitch in plot with rectangle box.
+    
+    """
+    
+    xy = [x0, ymin]
+    width = x1 - x0
+    
+    for a in ax:
+        rect = Rectangle(xy=xy, width=width, height=height, **kwargs)
+        a.add_patch(rect)
+
+                
+def add_suptitle_textboxes(ax, streaminfo_plot, kind='spectra'):
+    """
+    Add info text boxes below plot main title.
+    
+    """
+    
+    if kind == 'spectra':
+        tbx_1 = constants.SPECTRA_TEXT_BOXES_XCOORD['type_quality']
+        tbx_2 = constants.SPECTRA_TEXT_BOXES_XCOORD['origin_time']
+        tbx_4 = constants.SPECTRA_TEXT_BOXES_XCOORD['raw_denoised_deglitched']
+        tbx_5 = constants.SPECTRA_TEXT_BOXES_XCOORD['streamid_lf']
+        tbx_6 = constants.SPECTRA_TEXT_BOXES_XCOORD['streamid_hf']
+        tbx_7 = constants.SPECTRA_TEXT_BOXES_XCOORD['filtercode']
+        
+        lf_box_key = 'LF_orientation'
+        hf_box_key = 'HF_orientation'
+        
+    elif kind == 'filterbanks':
+        tbx_1 = constants.FILTERBANK_TEXT_BOXES_XCOORD['type_quality']
+        tbx_2 = constants.FILTERBANK_TEXT_BOXES_XCOORD['origin_time']
+        tbx_3 = constants.FILTERBANK_TEXT_BOXES_XCOORD['p_phase_time']
+        tbx_4 = \
+            constants.FILTERBANK_TEXT_BOXES_XCOORD['raw_denoised_deglitched']
+        tbx_5 = constants.FILTERBANK_TEXT_BOXES_XCOORD['streamid_lf']
+        tbx_6 = constants.FILTERBANK_TEXT_BOXES_XCOORD['streamid_hf']
+        tbx_7 = constants.FILTERBANK_TEXT_BOXES_XCOORD['freq_range']
+        
+        lf_box_key = 'LF'
+        hf_box_key = 'HF'
+        
+    
+    # top text boxes below suptitle
+    ax.text(
+        tbx_1, 
+        constants.SPECTRA_TEXT_BOXES_YCOORD, 
+        "{}/Q{}".format(
+            streaminfo_plot["mars_event_type_short"], 
+            streaminfo_plot["location_quality_1char"]),
+        verticalalignment='center', horizontalalignment='center',
+        transform=ax.transAxes, bbox=constants.SPECTRA_TEXT_BOX_PARAMS,
+        color=constants.COLOR_SPECTRA_TOP_TEXT_BOXES, 
+        fontsize=constants.SPECTRA_TEXT_BOXES_FONTSIZE)
+    
+    ax.text(
+        tbx_2, 
+        constants.SPECTRA_TEXT_BOXES_YCOORD, 
+        "OT: {}".format(streaminfo_plot["origin_time_screen"]),
+        verticalalignment='center', horizontalalignment='center',
+        transform=ax.transAxes, bbox=constants.SPECTRA_TEXT_BOX_PARAMS,
+        color=constants.COLOR_SPECTRA_TOP_TEXT_BOXES, 
+        fontsize=constants.SPECTRA_TEXT_BOXES_FONTSIZE)
+    
+    ax.text(
+        tbx_4, 
+        constants.SPECTRA_TEXT_BOXES_YCOORD, 
+        "{} waveforms".format(streaminfo_plot["wf_type"].lower()),
+        verticalalignment='center', horizontalalignment='center',
+        transform=ax.transAxes, bbox=constants.SPECTRA_TEXT_BOX_PARAMS,
+        color=constants.COLOR_SPECTRA_TOP_TEXT_BOXES, 
+        fontsize=constants.SPECTRA_TEXT_BOXES_FONTSIZE)
+        
+    if streaminfo_plot["LF"] is not None:
+        ax.text(
+            tbx_5, 
+            constants.SPECTRA_TEXT_BOXES_YCOORD, 
+            streaminfo_plot[lf_box_key],
+            verticalalignment='center', horizontalalignment='center',
+            transform=ax.transAxes, bbox=constants.SPECTRA_TEXT_BOX_PARAMS,
+            color=constants.COLOR_SPECTRA_TOP_TEXT_BOXES, 
+            fontsize=constants.SPECTRA_TEXT_BOXES_FONTSIZE)
+    
+    if streaminfo_plot["HF"] is not None:
+        ax.text(
+            tbx_6, 
+            constants.SPECTRA_TEXT_BOXES_YCOORD, 
+            streaminfo_plot[hf_box_key],
+            verticalalignment='center', horizontalalignment='center',
+            transform=ax.transAxes, bbox=constants.SPECTRA_TEXT_BOX_PARAMS,
+            color=constants.COLOR_SPECTRA_TOP_TEXT_BOXES, 
+            fontsize=constants.SPECTRA_TEXT_BOXES_FONTSIZE)
+    
+    if kind == 'spectra':
+        filterbox_text_sub = constants.SPECTRA_PLOT_FILTER_BOX_LABEL_1 + \
+            str(constants.WAVEFORM_READ_FILTER_HIGHPASS_FMIN) + \
+            constants.SPECTRA_PLOT_FILTER_BOX_LABEL_2
+        
+        ax.text(
+            tbx_7, 
+            constants.SPECTRA_TEXT_BOXES_YCOORD, 
+            filterbox_text_sub, verticalalignment='center', 
+            horizontalalignment='center',
+            transform=ax.transAxes, bbox=constants.SPECTRA_TEXT_BOX_PARAMS,
+            color=constants.COLOR_SPECTRA_TOP_TEXT_BOXES, 
+            fontsize=constants.SPECTRA_TEXT_BOXES_FONTSIZE)
+        
+    if kind == 'filterbanks':
+        
+        if streaminfo_plot["p_pick_time_screen"] is not None:
+            ax.text(
+                tbx_3, 
+                constants.FILTERBANK_TEXT_BOXES_YCOORD, 
+                "{}: {}".format(
+                    streaminfo_plot["ref_time_type"],
+                    streaminfo_plot["p_pick_time_screen"]),
+                verticalalignment='center', horizontalalignment='center',
+                transform=ax.transAxes, 
+                bbox=constants.FILTERBANK_TEXT_BOX_PARAMS,
+                color=constants.COLOR_FILTERBANK_TOP_TEXT_BOXES, 
+                fontsize=constants.FILTERBANK_TEXT_BOXES_FONTSIZE)
+        
+        freq_range_text_sub = "{:5.3f}-{:5.3f} Hz".format(
+            streaminfo_plot["fmin"] , streaminfo_plot["fmax"] )
+        
+        ax.text(
+            tbx_7, 
+            constants.FILTERBANK_TEXT_BOXES_YCOORD, 
+            freq_range_text_sub, verticalalignment='center', 
+            horizontalalignment='center',
+            transform=ax.transAxes, bbox=constants.FILTERBANK_TEXT_BOX_PARAMS,
+            color=constants.COLOR_FILTERBANK_TOP_TEXT_BOXES, 
+            fontsize=constants.FILTERBANK_TEXT_BOXES_FONTSIZE)
+        
     

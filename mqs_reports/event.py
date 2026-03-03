@@ -35,7 +35,6 @@ from os.path import split as psplit
 from typing import Union
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 
 import numpy as np
 
@@ -50,8 +49,9 @@ from obspy.taup.taup_create import build_taup_model
         
 import scipy.signal as signal
 
-import mqs_reports.constants as constants
+import mqs_reports.constants as cnt
 import mqs_reports.polarisation_analysis as pa
+import mqs_reports.utils as utils
 
 from mqs_reports.annotations import Annotations
 
@@ -69,7 +69,7 @@ from mqs_reports.utils import envelope_smooth
 from mqs_reports.utils import uncertainty_from_pdf
 
 from marsprocessingtools import constants as marsconstants
-from marsprocessingtools import constants as marsconstants
+from marsprocessingtools import utils as marsutils
 
 from singlestationlocator import geodesy as marsgeodesy
 
@@ -123,6 +123,7 @@ ENVELOPE_CORNERS_COUNT = 8
 FILTERBANK_CORNERS_COUNT = 8
 FILTERBANK_PLOT_SCALE_FACTOR = 4
 
+# OBSOLETE
 PICK_METHOD_ALIGNED = 'aligned'
 
 
@@ -258,7 +259,7 @@ class Event(object):
 #             self.distance_sigma = None
 #             self.baz = None
 
-        self.dir_cache = constants.EVENT_PRE_COMPUTE_DIR
+        self.dir_cache = cnt.EVENT_PRE_COMPUTE_DIR
         self.is_file_path_set = False
         
         self._waveforms_read = False
@@ -303,34 +304,34 @@ class Event(object):
         return string.format(**dict(inspect.getmembers(self)))
 
 
-    def _set_file_paths(self, wf_type=constants.DEFAULT_WAVFORM_TYPE):
+    def _set_file_paths(self, wf_type=cnt.DEFAULT_WAVFORM_TYPE):
         
         self.event_dir = pjoin(self.dir_cache, self.name)
         
         self.waveform_dir = pjoin(
-            self.event_dir, constants.PRE_COMPUTE_WAVEFORM_DIR)
+            self.event_dir, cnt.PRE_COMPUTE_WAVEFORM_DIR)
         
         self.spectra_dir = pjoin(
-            self.event_dir, constants.PRE_COMPUTE_SPECTRA_DIR)
+            self.event_dir, cnt.PRE_COMPUTE_SPECTRA_DIR)
         
         self.filterbank_dir = pjoin(
-            self.event_dir, constants.PRE_COMPUTE_FILTERBANK_DIR)
+            self.event_dir, cnt.PRE_COMPUTE_FILTERBANK_DIR)
         
         # origin_path = pjoin(event_dir, 'origin_id.txt')
         
         self.metadata_dir = pjoin(
-            self.event_dir, constants.PRE_COMPUTE_METADATA_DIR)
+            self.event_dir, cnt.PRE_COMPUTE_METADATA_DIR)
         
         self.metadata_path = pjoin(
             self.metadata_dir,
-            constants.EVENT_METADATA_PRE_COMPUTE_JSON_FILE.format(self.name))
+            cnt.EVENT_METADATA_PRE_COMPUTE_JSON_FILE.format(self.name))
         
         self.VBB_path = pjoin(
-            self.waveform_dir, constants.VBB_FILE_TEMPLATE.format(wf_type))
+            self.waveform_dir, cnt.VBB_FILE_TEMPLATE.format(wf_type))
         self.VBB100_path = pjoin(
-            self.waveform_dir, constants.VBB100_FILE_TEMPLATE.format(wf_type))
+            self.waveform_dir, cnt.VBB100_FILE_TEMPLATE.format(wf_type))
         self.SP_path = pjoin(
-            self.waveform_dir, constants.SP_FILE_TEMPLATE.format(wf_type))
+            self.waveform_dir, cnt.SP_FILE_TEMPLATE.format(wf_type))
         
         self.is_file_path_set = True
         
@@ -352,13 +353,13 @@ class Event(object):
         
         ## defaults - filterbanks
 
-        fmin_LF = constants.PLOT_FILTERBANK_FMIN_LF
-        fmax_LF = constants.PLOT_FILTERBANK_FMAX_LF
-        df_LF = constants.PLOT_FILTERBANK_DF_LF
+        fmin_LF = cnt.PLOT_FILTERBANK_FMIN_LF
+        fmax_LF = cnt.PLOT_FILTERBANK_FMAX_LF
+        df_LF = cnt.PLOT_FILTERBANK_DF_LF
         
-        fmin_HF = constants.PLOT_FILTERBANK_FMIN_HF
-        fmax_HF = constants.PLOT_FILTERBANK_FMAX_HF
-        df_HF = constants.PLOT_FILTERBANK_DF_HF
+        fmin_HF = cnt.PLOT_FILTERBANK_FMIN_HF
+        fmax_HF = cnt.PLOT_FILTERBANK_FMAX_HF
+        df_HF = cnt.PLOT_FILTERBANK_DF_HF
         
         # plot method defaults
         # still used?
@@ -377,9 +378,9 @@ class Event(object):
             self.product_parameters['filterbanks']['t_P'] = utct(self.starttime)
             
             self.product_parameters['filterbanks']['fmin'] = \
-                constants.PLOT_FILTERBANK_FMIN_SP_DL
+                cnt.PLOT_FILTERBANK_FMIN_SP_DL
             self.product_parameters['filterbanks']['fmax'] = \
-                constants.PLOT_FILTERBANK_FMAX_SP_DL
+                cnt.PLOT_FILTERBANK_FMAX_SP_DL
             self.product_parameters['filterbanks']['df'] = df_HF
         
         elif self.mars_event_type_short in ['LF', 'BB', 'HF', 'VF', '24']:
@@ -407,18 +408,18 @@ class Event(object):
                     self.product_parameters['filterbanks']['instrument'] = 'both'
                     
                     self.product_parameters['filterbanks']['fmin'] = \
-                        constants.PLOT_FILTERBANK_FMIN_VF_BOTH
+                        cnt.PLOT_FILTERBANK_FMIN_VF_BOTH
                     self.product_parameters['filterbanks']['fmax'] = \
-                        constants.PLOT_FILTERBANK_FMAX_VF_BOTH
+                        cnt.PLOT_FILTERBANK_FMAX_VF_BOTH
                     
                     
                 else:
                     self.product_parameters['filterbanks']['instrument'] = 'SP'
                     
                     self.product_parameters['filterbanks']['fmin'] = \
-                        constants.PLOT_FILTERBANK_FMIN_VF_SP
+                        cnt.PLOT_FILTERBANK_FMIN_VF_SP
                     self.product_parameters['filterbanks']['fmax'] = \
-                        constants.PLOT_FILTERBANK_FMAX_VF_SP
+                        cnt.PLOT_FILTERBANK_FMAX_VF_SP
                 
             elif self.mars_event_type_short in ['LF', 'BB']:
                     
@@ -476,14 +477,14 @@ class Event(object):
         self,
         inv: obspy.Inventory,
         sc3dir,
-        event_tmp_dir=constants.EVENT_PRE_COMPUTE_DIR,
-        wf_type=constants.DEFAULT_WAVFORM_TYPE,
-        kind=constants.DEFAULT_WAVFORM_KIND,
-        fmin_SP=constants.WAVEFORM_READ_SP_FMIN,
-        fmin_VBB=constants.WAVEFORM_READ_VBB_FMIN,
-        t_pad_VBB=constants.WAVEFORM_READ_T_PAD_VBB,
-        station=constants.DEFAULT_STATION_NAME,
-        location_code=constants.DEFAULT_LOCATION_CODE,
+        event_tmp_dir=cnt.EVENT_PRE_COMPUTE_DIR,
+        wf_type=cnt.DEFAULT_WAVFORM_TYPE,
+        kind=cnt.DEFAULT_WAVFORM_KIND,
+        fmin_SP=cnt.WAVEFORM_READ_SP_FMIN,
+        fmin_VBB=cnt.WAVEFORM_READ_VBB_FMIN,
+        t_pad_VBB=cnt.WAVEFORM_READ_T_PAD_VBB,
+        station=cnt.DEFAULT_STATION_NAME,
+        location_code=cnt.DEFAULT_LOCATION_CODE,
         remove_response=True):
         
         """
@@ -525,8 +526,8 @@ class Event(object):
     def read_data_local(
         self, 
         wf_type: str,
-        station: str=constants.DEFAULT_STATION_NAME, 
-        location_code: str=constants.DEFAULT_LOCATION_CODE) -> bool:
+        station: str=cnt.DEFAULT_STATION_NAME, 
+        location_code: str=cnt.DEFAULT_LOCATION_CODE) -> bool:
 
         """
         Read waveform data from local cache structure
@@ -575,9 +576,9 @@ class Event(object):
     def write_data_local(
         self, 
         wf_type: str, 
-        dir_cache: str=constants.EVENT_PRE_COMPUTE_DIR, 
-        station: str=constants.DEFAULT_STATION_NAME, 
-        location_code: str=constants.DEFAULT_LOCATION_CODE):
+        dir_cache: str=cnt.EVENT_PRE_COMPUTE_DIR, 
+        station: str=cnt.DEFAULT_STATION_NAME, 
+        location_code: str=cnt.DEFAULT_LOCATION_CODE):
 
         """
         Store waveform data in local cache structure
@@ -604,21 +605,21 @@ class Event(object):
             self.waveforms_VBB.write(
                 pjoin(
                     self.waveform_dir, 
-                    constants.VBB_FILE_TEMPLATE.format(wf_type)), 
+                    cnt.VBB_FILE_TEMPLATE.format(wf_type)), 
                 format='MSEED')
                 
         if self.waveforms_VBB100 is not None and len(self.waveforms_VBB100) > 0:
             self.waveforms_VBB100.write(
                 pjoin(
                     self.waveform_dir, 
-                    constants.VBB100_FILE_TEMPLATE.format(wf_type)), 
+                    cnt.VBB100_FILE_TEMPLATE.format(wf_type)), 
                     format='MSEED')
 
         if self.waveforms_SP is not None and len(self.waveforms_SP) > 0:
             self.waveforms_SP.write(
                 pjoin(
                     self.waveform_dir, 
-                    constants.SP_FILE_TEMPLATE.format(wf_type)), 
+                    cnt.SP_FILE_TEMPLATE.format(wf_type)), 
                     format='MSEED')
 
 
@@ -628,12 +629,12 @@ class Event(object):
         sc3dir: str,
         wf_type: str,
         kind: str,
-        fmin_SP: str=constants.WAVEFORM_READ_SP_FMIN,
-        fmin_VBB: str=constants.WAVEFORM_READ_VBB_FMIN,
-        tpre_SP: str=constants.WAVEFORM_READ_SP_T_PRE,
-        tpre_VBB: str=constants.WAVEFORM_READ_VBB_T_PRE,
-        station: str=constants.DEFAULT_STATION_NAME,
-        location_code: str=constants.DEFAULT_LOCATION_CODE,
+        fmin_SP: str=cnt.WAVEFORM_READ_SP_FMIN,
+        fmin_VBB: str=cnt.WAVEFORM_READ_VBB_FMIN,
+        tpre_SP: str=cnt.WAVEFORM_READ_SP_T_PRE,
+        tpre_VBB: str=cnt.WAVEFORM_READ_VBB_T_PRE,
+        station: str=cnt.DEFAULT_STATION_NAME,
+        location_code: str=cnt.DEFAULT_LOCATION_CODE,
         remove_response: bool=True) -> None:
         """
         Read waveform data into event object
@@ -905,7 +906,7 @@ class Event(object):
         
         # VBB, VBB100, SP
         for wf_classmember_name, wf_config in \
-            constants.WF_CHANNEL_CONFIG.items():
+            cnt.WF_CHANNEL_CONFIG.items():
             
             wf = getattr(self, wf_classmember_name, None)
             
@@ -919,7 +920,7 @@ class Event(object):
                     if len(tr) > 0:
                         available[chan] = tr[0].stats.sampling_rate
 
-#             for chan, mask in constants.VBB100_CHANNEL_MASK.items():
+#             for chan, mask in cnt.VBB100_CHANNEL_MASK.items():
 #                 available[chan] = None
 #                 
 #                 if self.waveforms_VBB100 is not None:
@@ -927,7 +928,7 @@ class Event(object):
 #                     if len(tr) > 0:
 #                         available[chan] = tr[0].stats.sampling_rate
 # 
-#             for chan, mask in constants.SP_CHANNEL_MASK.items():
+#             for chan, mask in cnt.SP_CHANNEL_MASK.items():
 #                 available[chan] = None
 #                 
 #                 if self.waveforms_SP is not None:
@@ -945,8 +946,8 @@ class Event(object):
         rotate: bool=False, 
         instrument: str="", 
         smprate: str="",
-        winlen_sec=constants.SPECTRA_WELSH_WINDOW_LENGTH_SEC, 
-        detick_nfsamp=constants.SPECTRA_DETICK_NUMBER_SAMPLES, 
+        winlen_sec=cnt.SPECTRA_WELSH_WINDOW_LENGTH_SEC, 
+        detick_nfsamp=cnt.SPECTRA_DETICK_NUMBER_SAMPLES, 
         force_products: bool=False, 
         calculate_spectra: bool=False, 
         keep_spectra: bool=False):
@@ -1588,22 +1589,21 @@ class Event(object):
                                   amplitude_sigma_dB=amplitude_dB_sigma,
                                   verbose=verbose)
 
-    def plot_envelope(self, comp='Z',
-                      figsize=(4, 3),
-                      t0=0.0,
-                      starttime=None, endtime=None,
-                      fmin=0.05, fmax=10.,
-                      ax=None):
+    def plot_envelope(
+        self, comp='Z', figsize=(4, 3), t0=0.0, starttime=None, endtime=None,
+        fmin=0.05, fmax=10.0, ax=None):
 
         
         if ax is None:
             fig, ax = plt.subplots(nrows=1, ncols=1,
                                    figsize=figsize)
             new_ax = True
+        
         else:
             new_ax = False
 
         tr = self.waveforms_VBB.select(channel='??' + comp)[0].copy()
+        
         if starttime is not None:
             tr.trim(starttime=starttime)
         if endtime is not None:
@@ -1635,22 +1635,21 @@ class Event(object):
         if new_ax:
             plt.show()
 
-    def plot_spectrogram(self, comp='Z',
-                         figsize=(4, 3),
-                         kind='cwt',
-                         t0=0.0,
-                         starttime=None, endtime=None,
-                         fmin=0.05, fmax=10.,
-                         ax=None):
-        import matplotlib.pyplot as plt
+    
+    def plot_spectrogram(
+        self, comp='Z', figsize=(4, 3), kind='cwt', t0=0.0, starttime=None, 
+        endtime=None, fmin=0.05, fmax=10.0, ax=None):
+        
         if ax is None:
             fig, ax = plt.subplots(nrows=1, ncols=1,
                                    figsize=figsize)
             new_ax = True
+        
         else:
             new_ax = False
 
         tr = self.waveforms_VBB.select(channel='??' + comp)[0].copy()
+        
         if starttime is not None:
             tr.trim(starttime=starttime)
         if endtime is not None:
@@ -1750,71 +1749,78 @@ class Event(object):
             plt.tight_layout()
             plt.show()
 
-    def plot_waveform(self, comp='Z',
-                      window: str = 'S',
-                      figsize=(4, 3),
-                      color_spec='red',
-                      color_noise='black',
-                      fmin=None, fmax=None,
-                      ax=None):
-        import matplotlib.pyplot as plt
+
+    def plot_waveform(
+        self, comp='Z', window: str = 'S', figsize=(4, 3), color_spec='red',
+        color_noise='black', fmin=None, fmax=None, ax=None):
+        
         if ax is None:
             fig, ax = plt.subplots(nrows=1, ncols=1,
                                    figsize=figsize)
             new_ax = True
+        
         else:
             new_ax = False
 
         tr_work = self.waveforms_VBB.select(channel='??' + comp)[0]
         tr_work.differentiate()
         tr_work.decimate(2)
-        tr_work.trim(starttime=utct(self.picks['P']) - 60.,
-                     endtime=utct(self.picks['P']) + 520.)
+        tr_work.trim(
+            starttime=utct(self.picks['P']) - 60.,
+            endtime=utct(self.picks['P']) + 520.)
 
-        ax.plot(tr_work.times() - 60., tr_work.data,
-                lw=0.5)
+        ax.plot(
+            tr_work.times() - 60.0, tr_work.data, lw=0.5)
 
         offset = np.quantile(abs(tr_work.data), q=0.99)
 
-        ax.axvline(x=0., color='k', zorder=-1
-                   )
-        ax.text(x=10., y=-offset * 1.1, s='P',
-                bbox=dict(edgecolor='black',
-                          facecolor='white',
-                          alpha=0.5),
-                fontsize=14)
+        ax.axvline(x=0., color='k', zorder=-1)
+        
+        ax.text(
+            x=10.0, y=-offset * 1.1, s='P', 
+            bbox=dict(edgecolor='black', facecolor='white', alpha=0.5),
+            fontsize=14)
+        
         ax.axvline(x=utct(self.picks['S']) - utct(self.picks['P']), color='k',
                    zorder=-1)
+        
         ax.text(x=utct(self.picks['S']) - utct(self.picks['P']) + 10.,
                 bbox=dict(edgecolor='black',
                           facecolor='white',
                           alpha=0.5),
                 y=-offset * 1.1, s='S', fontsize=14)
-        ax.text(0.12, 0.95,
-                horizontalalignment='left',
-                verticalalignment='top',
-                transform=ax.transAxes,
-                s='filtered, %3.1f-%3.1f Hz' % (fmin, fmax))
-        ax.text(0.12, 0.05,
-                horizontalalignment='left',
-                verticalalignment='bottom',
-                transform=ax.transAxes,
-                s='raw')
+        
+        ax.text(
+            0.12, 0.95,
+            horizontalalignment='left',
+            verticalalignment='top',
+            transform=ax.transAxes,
+            s='filtered, %3.1f-%3.1f Hz' % (fmin, fmax))
+        
+        ax.text(
+            0.12, 0.05,
+            horizontalalignment='left',
+            verticalalignment='bottom',
+            transform=ax.transAxes,
+            s='raw')
 
         if fmin is not None and fmax is not None:
             tr_work.filter('highpass', freq=fmin)
             tr_work.filter('lowpass', freq=fmax)
-            ax.plot(tr_work.times() - 60., tr_work.data + offset * 1.5,
-                    lw=0.5)
+            
+            ax.plot(
+                tr_work.times() - 60., tr_work.data + offset * 1.5, lw=0.5)
 
         if new_ax:
             plt.tight_layout()
             plt.show()
 
+
     def make_report(self, chan, fnam_out, annotations=None):
         make_report(self, chan=chan, fnam_out=fnam_out, annotations=annotations)
 
-    def write_locator_yaml(self, fnam_out, dt=2.):
+
+    def write_locator_yaml(self, fnam_out, dt=2.0):
         with open(fnam_out, 'w') as f:
             f.write('velocity_model: MQS_Ops.2019-01-03_250\n')
             f.write('velocity_model_uncertainty: 1.5\n')
@@ -1834,10 +1840,11 @@ class Event(object):
 
     def rotation_plot(self, angles, fmin, fmax):
         
-        fig, ax = plt.subplots(nrows=1, ncols=2, sharex='all', sharey='all',
-                               figsize=(10, 6))
+        fig, ax = plt.subplots(
+            nrows=1, ncols=2, sharex='all', sharey='all', figsize=(10, 6))
 
         nangles = len(angles)
+        
         st_work = self.waveforms_VBB.select(channel='??[ENZ]').copy()
         st_work.decimate(5)
         st_work.filter('highpass', freq=fmin, corners=6)
@@ -1870,10 +1877,11 @@ class Event(object):
                              iangle + tr.data / maxfac, c='k', lw=1.5,
                              zorder=50)
 
-        self.mark_phases(ax, tref=utct(self.picks['P']))
+        self.mark_phases(ax, ref_time=utct(self.picks['P']))
         
-        ax[0].set_yticks(range(0, nangles))
+        ax[0].set_yticks(ticks=range(0, nangles))
         ax[0].set_yticklabels(angles)
+        
         ax[0].set_xlim(-50, 550)
         ax[0].set_ylim(-1, nangles * 1.15)
         ax[0].set_xlabel('time after P-wave', fontsize='medium')
@@ -1885,96 +1893,112 @@ class Event(object):
         fig.suptitle('Event %s (%5.3f-%5.3f Hz)' %
                      (self.name, fmin, fmax), fontsize='large')
         
-        fig.savefig('rotations_%s_%3.1f_%3.1f_sec.png' %
-                    (self.name, 1. / fmax, 1. / fmin),
-                    dpi=200)
+        fig.savefig(
+            'rotations_%s_%3.1f_%3.1f_sec.png' % (
+                self.name, 1. / fmax, 1. / fmin),
+            dpi=cnt.DEFAULT_FIGURE_DPI)
 
-    def mark_phases(self, ax, tref):
+
+    def mark_phases(self, ax, ref_time):
+        """
+        Mark (P, S)-like phases and start, end with vertical lines in plot.
+        
+        x axis is seconds after ref_time, ref_time is UTCDateTime()
+        
+        """
+        
         for a in ax:
-            for pick in ['P', 'S', 'Pg', 'Sg', 'x1', 'x2', 'x3', 'PP', 'SS']:
+            for pick in cnt.PLOT_MARKER_FOR_PHASES:
+                
+                markercolor = utils.get_color_for_marker(pick)
+                
                 try:
-                    if pick in self.picks and \
-                        self.picks_methodid[pick] != PICK_METHOD_ALIGNED:
+                    if pick in self.picks:
                         
-                        x = utct(self.picks[pick]) - tref
-                        a.axvline(x, c='darkred', ls='dashed')
-                        a.annotate(xy=(x, -0.5), text=' ' + pick,
-                                   c='darkred',
-                                   horizontalalignment='left')
+                        x = utct(self.picks[pick]) - ref_time
+                        
+                        # weight= , alpha=
+                        a.axvline(
+                            x, c=markercolor,
+                            ls=cnt.FILTERBANK_PLOT_PHASES_MARKER_LINESTYLE,
+                            lw=cnt.FILTERBANK_PLOT_PHASES_MARKER_LINEWIDTH)
+                        
+                        # text=' ' + pick,
+                        a.annotate(
+                            xy=(x, cnt.FILTERBANK_PLOT_PHASES_MARKER_Y_OFFSET), 
+                            text=pick, c=markercolor,
+                            horizontalalignment=\
+                                cnt.FILTERBANK_PLOT_PHASES_MARKER_X_ALIGN)
+                        
                 except TypeError:
+                    
+                    # TODO(fab): when does this happen?
                     pass
             
             for pick in ['start', 'end']:
-                a.axvline(utct(self.picks[pick]) - tref,
-                          c='darkgreen', ls='dashed')
+                a.axvline(
+                    utct(self.picks[pick]) - ref_time, 
+                    c=cnt.COLOR_FILTERBANK_START_END_PHASE,
+                    ls=cnt.FILTERBANK_PLOT_PHASES_MARKER_LINESTYLE)
 
 
     def plot_filterbank(
-        self, fmin: float=1.0/64.0, fmax: float=4.0, df: float=2**0.5,
-        log: bool=False, waveforms: bool=False, normwindow: str='all',
-        normtype: str='none', rotate: bool=False, 
-        annotations: Annotations=None, tmin_plot: float=None,
-        tmax_plot: float=None, timemarkers: dict=None,
-        starttime: obspy.UTCDateTime=None, endtime: obspy.UTCDateTime=None,
-        instrument: str="", f_VBB_SP_transition=7.5, fnam: str=None,
-        station: str="", location_code: str=""):
-
+        self, 
+        fmin: float=1.0/64.0, 
+        fmax: float=4.0, 
+        df: float=2**0.5,
+        log: bool=False, 
+        waveforms: bool=False, 
+        normwindow: str='all',
+        normtype: str='none', 
+        rotate: bool=False, 
+        wf_type="RAW",
+        annotations: Annotations=None, 
+        tmin_plot: float=None,
+        tmax_plot: float=None, 
+        timemarkers: dict=None,
+        starttime: obspy.UTCDateTime=None, 
+        endtime: obspy.UTCDateTime=None,
+        instrument: str="", 
+        f_VBB_SP_transition=7.5, 
+        fnam: str=None,
+        station: str="", 
+        location_code: str=""):
         """
         log: plot waveforms in logarithmic scale 
-        
-        left-over from branch fab (?)
         waveform: plot waveforms in addition to envelopes
+        
         """
         
-        def mark_glitch(ax: list,
-                        x0: float, x1: float,
-                        ymin: float = -2.,
-                        height: float = 50., **kwargs):
-            
-            xy = [x0, ymin]
-            width = x1 - x0
-            for a in ax:
-                rect = Rectangle(xy=xy, width=width, height=height, **kwargs)
-                a.add_patch(rect)
-
-        fig, ax = plt.subplots(
-            nrows=1, ncols=3, sharex='all', sharey='all', figsize=(10, 6))
-
-        # Determine frequencies
+        fig = plt.figure(figsize=cnt.FILTERBANK_FIGURE_SIZE)
         
-        # leftover from branch fab
+        gs = fig.add_gridspec(
+            cnt.FILTERBANK_FIGURE_GRIDSPEC[0], 
+            cnt.FILTERBANK_FIGURE_GRIDSPEC[1],
+            height_ratios=cnt.FILTERBANK_FIGURE_GRIDSPEC_HEIGHT_RATIOS)
         
-        # if instrument is None:
-        #     instrument = self.product_parameters['filterbanks']['instrument']
+        ax0 = fig.add_subplot(gs[0, :])
+        ax1 = fig.add_subplot(gs[1, 0])
+        ax2 = fig.add_subplot(gs[1, 1])
+        ax3 = fig.add_subplot(gs[1, 2])
         
-#         if fmin is None:
-#             fmin = self.product_parameters['filterbanks']['fmin']
-#             
-#         if fmax is None:
-#             fmax = self.product_parameters['filterbanks']['fmax']
-#  
-#         if df is None:
-#             df = self.product_parameters['filterbanks']['df']                
+        ax0.axis('off')
+        
+        fig.subplots_adjust(**cnt.FILTERBANK_FIGURE_POSITIONS)
+        
+        the_axes = (ax1, ax2, ax3)
         
         # Determine frequencies
         nfreqs = int(np.round(np.log(fmax / fmin) / np.log(df), decimals=0) + 1)
         freqs = np.geomspace(fmin, fmax + 0.001, nfreqs)
         
-        # print("nfreqs: {}, min freq: {}, max freq: {}".format(
-        #     nfreqs, freqs[0], freqs[-1]))
-        
-        # print("waveforms VBB;\n{}".format(self.waveforms_VBB))
-        # print("waveforms SP:\n{}".format(self.waveforms_SP))
-        
-        # Reference time
-        if 'P' in self.picks and len(self.picks['P']) > 0 and \
-            self.picks_methodid['P'] != PICK_METHOD_ALIGNED:
+        # Reference times
+        if 'P' in self.picks and len(self.picks['P']) > 0:
                 
             t_ref = utct(self.picks['P'])
             t_ref_type = 'P'
         
-        elif 'PP' in self.picks and len(self.picks['PP']) > 0 and \
-            self.picks_methodid['PP'] != PICK_METHOD_ALIGNED:
+        elif 'PP' in self.picks and len(self.picks['PP']) > 0:
                 
             t_ref = utct(self.picks['PP'])
             t_ref_type = 'PP'
@@ -1988,44 +2012,10 @@ class Event(object):
             plt.close()
             return None
         
-        # select from waveforms
-        if instrument == 'VBB':
-            st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
-            st_HF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
-
-            st_LF_desc = f'LF: {st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
-            st_HF_desc = ''
+        # select streams and get description
+        st_LF, st_HF, st_LF_desc, st_HF_desc = utils.get_stream_description(
+            self, instrument)
         
-        elif instrument == 'VBB100':
-            st_LF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
-            st_HF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
-            
-            st_LF_desc = ''
-            st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
-        
-        elif instrument == 'SP':
-            st_LF = self.waveforms_SP.select(channel='??[ENZ]').copy()
-            st_HF = self.waveforms_SP.select(channel='??[ENZ]').copy()
-            st_LF_desc = ''
-            st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
-        
-        elif instrument == 'VBB+VBB100':
-            st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
-            st_HF = self.waveforms_VBB100.select(channel='??[ENZ]').copy()
-            
-            st_LF_desc = f'LF: {st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
-            st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
-        
-        elif instrument == 'VBB+SP':
-            st_LF = self.waveforms_VBB.select(channel='??[ENZ]').copy()
-            st_HF = self.waveforms_SP.select(channel='??[ENZ]').copy()
-            
-            st_LF_desc = f'LF: {st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
-            st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
-        
-        else:
-            raise ValueError(f'Invalid value for instrument: {instrument}')
-
         if rotate:
             st_HF.rotate('NE->RT', back_azimuth=self.baz)
             st_LF.rotate('NE->RT', back_azimuth=self.baz)
@@ -2038,7 +2028,7 @@ class Event(object):
             P=self.picks.get('P_spectral_end', None),
             S=self.picks.get('S_spectral_end', None), all=self.endtime)
         
-        # check tstart norm_for existence of requested phase
+        # check tstart_norm for existence of requested phase
         # (same existence for tend_norm)
         # set normwindow in order 'S', 'P', 'all'
         if normwindow == 'S':
@@ -2061,11 +2051,15 @@ class Event(object):
             tend_norm = utct(tend_norm[normwindow])
 
         if starttime is None:
-            starttime = self.starttime - 100.
+            starttime = self.starttime - \
+                cnt.PLOT_FILTERBANK_START_END_TIME_MARGIN_SEC
         if endtime is None:
-            endtime = self.endtime + 100.
+            endtime = self.endtime + \
+                cnt.PLOT_FILTERBANK_START_END_TIME_MARGIN_SEC
+        
         if tmin_plot is None:
             tmin_plot = starttime - t_ref
+            
         if tmax_plot is None:
             tmax_plot = endtime - t_ref
         
@@ -2089,12 +2083,6 @@ class Event(object):
 
         freqs_data = {}
     
-        # leftover from branch fab
-#         norm_factors = [[], [], []]
-#         norm_offsets = [[], [], []]
-#         envelopes = [[], [], []]
-#         waveform_tr = [[], [], []]
-
         xvec_env = []
         xvec = []
         
@@ -2142,12 +2130,20 @@ class Event(object):
 
             tr_Z = st_filt.select(channel='??Z')[0]
 
-            tr_2_env = envelope_smooth(tr=tr_2, mode='same',
-                                       envelope_window_in_sec=10.)
-            tr_3_env = envelope_smooth(tr=tr_3, mode='same',
-                                       envelope_window_in_sec=10.)
-            tr_Z_env = envelope_smooth(tr=tr_Z, mode='same',
-                                       envelope_window_in_sec=10.)
+            tr_2_env = envelope_smooth(
+                tr=tr_2, mode='same', 
+                envelope_window_in_sec=\
+                    cnt.PLOT_FILTERBANK_ENVELOPE_WINDOW_SECONDS)
+            
+            tr_3_env = envelope_smooth(
+                tr=tr_3, mode='same', 
+                envelope_window_in_sec=\
+                    cnt.PLOT_FILTERBANK_ENVELOPE_WINDOW_SECONDS)
+            
+            tr_Z_env = envelope_smooth(
+                tr=tr_Z, mode='same', 
+                envelope_window_in_sec=\
+                    cnt.PLOT_FILTERBANK_ENVELOPE_WINDOW_SECONDS)
 
             freqs_data[ifreq] = {}
             freqs_data[ifreq]['fcenter'] = fcenter
@@ -2174,9 +2170,10 @@ class Event(object):
                     offset = np.quantile(tr_norm.data, q=0.1)
                 
                 else:
-                    tr_norm = tr.slice(starttime=tstart_norm,
-                                       endtime=tend_norm,
-                                       nearest_sample=True)
+                    tr_norm = tr.slice(
+                        starttime=tstart_norm, endtime=tend_norm,
+                        nearest_sample=True)
+                    
                     try:
                         maxfac = np.quantile(tr_norm.data, q=0.8)
                         offset = np.quantile(tr_norm.data, q=0.1)
@@ -2250,67 +2247,79 @@ class Event(object):
                 #                      y2=iangle, color='darkgrey')
 
                 if log:
-                    ax[itr].plot(xvec_env,
-                                 ifreq + np.log(tr_env.data / maxfac) / 3,
-                                 lw=1.0, zorder=50)
+                    
+                    # logplot (used?)
+                    # no color
+                    the_axes[itr].plot(
+                        xvec_env,
+                        ifreq + np.log(tr_env.data / maxfac) / 3,
+                        lw=cnt.FILTERBANK_PLOT_ENVELOPE_LOG_LINEWIDTH, 
+                        zorder=cnt.FILTERBANK_PLOT_ENVELOPE_LOG_ZORDER)
+                
                 else:
 
                     if waveforms:
+                        
+                        # default black (alpha?)
                         color = 'k'
+                    
                     else:
+                        # envelopes
                         color = 'C%d' % (ifreq % 10)
 
-
-                    ax[itr].plot(xvec_env,
-                                 ifreq + (tr_env.data - offset) / maxfac,
-                                 c=color,
-                                 lw=0.5, zorder=80)
+                    # linplot (default), envelopes
+                    the_axes[itr].plot(
+                        xvec_env,
+                        ifreq + (tr_env.data - offset) / maxfac,
+                        c=color,
+                        lw=cnt.FILTERBANK_PLOT_ENVELOPE_LIN_LINEWIDTH, 
+                        zorder=cnt.FILTERBANK_PLOT_ENVELOPE_LIN_ZORDER)
+                    
                     if waveforms:
-                        ax[itr].plot(xvec,
-                                     ifreq + tr.data / maxfac,
-                                     c='C%d' % (ifreq % 10),
-                                     lw=0.5, zorder=50 - ifreq)
+                        
+                        # full waveforms, no envelopes
+                        
+                        zorder = cnt.FILTERBANK_PLOT_ENVELOPE_LOG_ZORDER - ifreq
+                        
+                        the_axes[itr].plot(
+                            xvec,
+                            ifreq + tr.data / maxfac,
+                            c='C%d' % (ifreq % 10),
+                            lw=cnt.FILTERBANK_PLOT_ENVELOPE_LIN_LINEWIDTH, 
+                            zorder=zorder)
 
-
-                    # plot envelopes
-#                     ax[itr].plot(
-#                         xvec_env[ifreq],
-#                         ifreq + \
-#                             (envelopes[itr][ifreq].data - offset) / max_maxfac,
-#                         c=color, lw=0.5, zorder=80)
-#                     
-#                     if waveforms:
-#                         # plot waveforms
-#                         ax[itr].plot(
-#                             xvec[ifreq],
-#                             ifreq + waveform_tr[itr][ifreq].data / max_maxfac,
-#                             c='C%d' % (ifreq % 10),
-#                             lw=0.5, zorder=50 - ifreq)
-        
-        
         # products.filter_traces() ends here 
         
         # external time markers
-        # print("plot time markers")
+        # TODO(fab): what are these? they are not phases
         if timemarkers is not None:
             for phase, time in timemarkers.items():
-                if tmin_plot < time < tmax_plot:
-                    for a in ax:
-                        a.axvline(x=time, ls='dashed')
-                        a.text(x=time, y=nfreqs, s=phase)
+                
+                markercolor = utils.get_color_for_marker(phase)
+                
+                if (tmin_plot < time) and (time < tmax_plot):
+                    for a in the_axes:
+                        a.axvline(
+                            x=time, 
+                            ls=cnt.FILTERBANK_PLOT_PHASES_MARKER_LINESTYLE,
+                            c=markercolor)
+                        
+                        a.text(x=time, y=nfreqs, s=phase, c=markercolor)
 
-        # phase markers: phases darkred, start/end darkgreen
-        # print("plot phase markers")
-        self.mark_phases(ax, tref=t_ref)
+        # phase markers: phases P red, S blue, start/end darkgreen
+        self.mark_phases(the_axes, ref_time=t_ref)
 
         # print("plot annotations")
         if annotations is not None:
             annotations_event = annotations.select(
-                starttime=utct(self.picks['start']) - 180.,
-                endtime=utct(self.picks['end']) + 180.)
+                starttime=utct(self.picks['start']) - \
+                    cnt.PLOT_FILTERBANK_ANNOTATION_TIME_MARGIN_SEC,
+                endtime=utct(self.picks['end']) + \
+                    cnt.PLOT_FILTERBANK_ANNOTATION_TIME_MARGIN_SEC)
             
             # mark every annotation time window with vertical light grey box
             if len(annotations_event) > 0:
+                
                 x0s = []
                 x1s = []
                 for times in annotations_event:
@@ -2322,75 +2331,148 @@ class Event(object):
                         float(tmax_glitch) - float(t_ref))
 
                 for x0, x1 in zip(x0s, x1s):
-                    mark_glitch(ax, x0, x1, fc='lightgrey',
-                                zorder=-3, alpha=0.8)
+                    utils.mark_glitch(
+                        the_axes, 
+                        x0, 
+                        x1, 
+                        fc=cnt.FILTERBANK_PLOT_GLITCH_ANNOTATION_FONTCOLOR,
+                        zorder=cnt.FILTERBANK_PLOT_GLITCH_ANNOTATION_ZORDER, 
+                        alpha=cnt.FILTERBANK_PLOT_GLITCH_ALPHA)
             
             # mark overall annotation(?) time window with horizontal grey box
-            mark_glitch(ax,
-                        x0=tstart_norm - float(t_ref),
-                        x1=tend_norm - float(t_ref),
-                        ymin=-1, height=0.3, fc='grey', alpha=0.8)
+            utils.mark_glitch(
+                the_axes, 
+                x0=tstart_norm - float(t_ref), 
+                x1=tend_norm - float(t_ref),
+                ymin=cnt.FILTERBANK_PLOT_GLITCH_YMIN, 
+                height=cnt.FILTERBANK_PLOT_GLITCH_HEIGHT, 
+                fc=cnt.FILTERBANK_PLOT_GLITCH_FONTCOLOR, 
+                alpha=cnt.FILTERBANK_PLOT_GLITCH_ALPHA)
         
-        ax[0].set_yticks(range(0, nfreqs))
         np.set_printoptions(precision=3)
-        ticklabels = []
         
-        # set ticklabels per freq bin
+        y_ticklabels = []
+        y_ticks = list(range(0, nfreqs))
+        
+        ## set ticklabels per freq bin
         for freq in freqs:
             if freq > 1:
-                ticklabels.append(f'{freq:.1f}')
+                y_ticklabels.append(f'{freq:.1f}')
             else:
-                ticklabels.append(f'1/{1. / freq:.1f}')
-                
-        ax[0].set_yticklabels(ticklabels)
+                y_ticklabels.append(f'1/{1.0 / freq:.1f}')
         
-        for a in ax:
-            # a.set_xticks(np.arange(-300, 1000, 100), minor=False)
-            a.set_xticks(np.arange(-300, 3000, 25), minor=True)
-            if t_ref_type == 'P':
-                a.set_xlabel('time after P-wave', fontsize='medium')
-            else:
-                a.set_xlabel('time after start time', fontsize='medium')
-
-            a.grid(visible=True, which='both', axis='x', lw=0.2, alpha=0.3)
-            a.grid(visible=True, which='major', axis='y', lw=0.2, alpha=0.3)
-
-            a.axhline(y=np.argmin(abs(freqs - 1.)),
-                      ls='dashed', lw=1.0, c='k')
+        ## y label: only in first (leftmost) panel
+        # ax1.set_yticklabels(y_ticklabels)
+        ax1.set_ylabel(
+            cnt.FILTERBANK_PLOT_YLABEL, 
+            fontsize=cnt.FILTERBANK_PLOT_YLABEL_FONTSIZE)
         
-        ax[0].set_xlim(tmin_plot, tmax_plot)
-        ax[0].set_ylim(-1.5, nfreqs + 1.5)
+        ax1.set_yticks(
+                ticks=y_ticks, labels=y_ticklabels, 
+                fontsize=cnt.FILTERBANK_PLOT_YTICKLABEL_FONTSIZE)
         
-        ax[0].set_ylabel('frequency / Hz', fontsize='medium')
-        ax[0].set_title('vertical (Z)', fontsize='medium')
-
+        ## title per three panels
+        ax1.set_title(
+            'vertical (Z)', fontsize=cnt.FILTERBANK_PLOT_TITLE_FONTSIZE)
+        
         if rotate:
-            ax[1].set_title('radial (R)', fontsize='medium')
-            ax[2].set_title('transverse (T)', fontsize='medium')
-        else:
-            ax[1].set_title('north/south (N)', fontsize='medium')
-            ax[2].set_title('east/west (E)', fontsize='medium')
-
-        # fig.suptitle( ('Event=%s LQ=%s Type=%s (%5.3f-%5.3f Hz) %s %s' %  (
-        #     self.name, self.quality, self.mars_event_type_short, fmin, fmax, st_LF_desc, st_HF_desc)),
-        #     fontsize='x-small')
-
-        fig.suptitle(("Event {} {}/Q{} ({:5.3f}-{:5.3f} Hz), {} {}".format(
-            self.name, self.mars_event_type_short, self.quality, fmin, fmax, 
-            st_LF_desc, st_HF_desc)), fontsize='large')
+            ax2.set_title(
+                'radial (R)', fontsize=cnt.FILTERBANK_PLOT_TITLE_FONTSIZE)
+            
+            ax3.set_title(
+                'transverse (T)', fontsize=cnt.FILTERBANK_PLOT_TITLE_FONTSIZE)
         
-
-        plt.subplots_adjust(top=0.911,
-                            bottom=0.097,
-                            left=0.089,
-                            right=0.972,
-                            hspace=0.2,
-                            wspace=0.116)
+        else:
+            ax2.set_title(
+                'north/south (N)', fontsize=cnt.FILTERBANK_PLOT_TITLE_FONTSIZE)
+            ax3.set_title(
+                'east/west (E)', fontsize=cnt.FILTERBANK_PLOT_TITLE_FONTSIZE)
+        
+        # x label: only on center panel
+        if t_ref_type in ('P', 'PP'):
+            
+            # timestamp readable
+            x_label = cnt.FILTERBANK_PLOT_PHASES_XLABEL_TEMPLATE.format(
+                t_ref_type, marsutils.get_rounded_timestamps(t_ref).get(
+                    'TIMESTAMP_READABLE_FORMAT'))
+                
+            t_ref_p = t_ref
+        
+        else:
+            x_label = cnt.FILTERBANK_PLOT_NO_PHASES_XLABEL_TEMPLATE.format(
+                marsutils.get_rounded_timestamps(t_ref).get(
+                    'TIMESTAMP_READABLE_FORMAT'))
+                
+            t_ref_p = None
+        
+        ax2.set_xlabel(
+            x_label, fontsize=cnt.FILTERBANK_PLOT_PHASES_XLABEL_FONTSIZE,
+            labelpad=cnt.FILTERBANK_PLOT_PHASES_XLABEL_PAD)
+        
+        # axis limits
+        # ax1.set_xlim(tmin_plot, tmax_plot)
+        # ax1.set_ylim(-1.5, nfreqs + 1.5)
+        
+        ## setup grids for three panels
+        for ax_idx, ax in enumerate(the_axes):
+            
+            if ax_idx > 0:
+                
+                # fontsize=cnt.FILTERBANK_PLOT_YTICKLABEL_FONTSIZE
+                # ax.set_yticks(ticks=y_ticks)
+                ax.set_yticks([])
+                
+            # fontsize=cnt.FILTERBANK_PLOT_XTICKLABEL_FONTSIZE
+            # needs also labels kwarg
+            ax.set_xticks(
+                ticks=cnt.FILTERBANK_PLOT_GRID_XTICKS,
+                minor=True)
+            
+            ax.grid(
+                visible=True, which='both', axis='x', 
+                lw=cnt.FILTERBANK_PLOT_GRID_LINEWIDTH, 
+                alpha=cnt.FILTERBANK_PLOT_GRID_ALPHA)
+            
+            ax.grid(
+                visible=True, which='major', axis='y', 
+                lw=cnt.FILTERBANK_PLOT_GRID_LINEWIDTH, 
+                alpha=cnt.FILTERBANK_PLOT_GRID_ALPHA)
+            
+            # color black?
+            ax.axhline(
+                y=np.argmin(abs(freqs - 1.)),
+                ls=cnt.FILTERBANK_PLOT_GRID_HORIZONTAL_LINESTYLE, 
+                lw=cnt.FILTERBANK_PLOT_GRID_HORIZONTAL_LINEWIDTH, 
+                c=cnt.COLOR_FILTERBANK_GRID_HORIZONTAL,
+                alpha=cnt.FILTERBANK_PLOT_GRID_HORIZONTAL_ALPHA)
+            
+            # axis limits
+            ax.set_xlim(tmin_plot, tmax_plot)
+            ax.set_ylim(-1.5, nfreqs + 1.5)
+        
+        ## title line and info text boxes
+        suptitle_text = "Event {}".format(self.name)
+        
+        # fontsize large is too large
+        fig.suptitle(
+            suptitle_text, weight='bold', 
+            fontsize=cnt.FILTERBANK_PLOT_SUPTITLE_FONTSIZE)
+        
+        orientation = "ZRT" if rotate else "ZNE"
+        streaminfo = utils.get_streaminfo(self, component=orientation)
+        
+        streaminfo_plot = utils.set_streaminfo_plot(
+            self, streaminfo, fmin=fmin, fmax=fmax, lf=st_LF_desc, 
+            hf=st_HF_desc, ref_time=t_ref_p, ref_time_type=t_ref_type, 
+            wf_type=wf_type)
+        
+        utils.add_suptitle_textboxes(ax0, streaminfo_plot, kind='filterbanks')
         
         if fnam is None:
             plt.show()
+        
         else:
-            fig.savefig(fnam, dpi=200)
+            fig.savefig(fnam, dpi=cnt.FILTERBANK_FIGURE_DPI)
         
         plt.close()
 
@@ -2421,14 +2503,12 @@ class Event(object):
         freqs = np.geomspace(fmin, fmax + 0.001, nfreqs)
 
         # Reference time
-        if 'P' in self.picks and len(self.picks['P']) > 0 and \
-            self.picks_methodid['P'] != PICK_METHOD_ALIGNED:
+        if 'P' in self.picks and len(self.picks['P']) > 0:
                 
             t_ref = utct(self.picks['P'])
             t_ref_type = 'P'
             
-        elif 'PP' in self.picks and len(self.picks['PP']) > 0 and \
-            self.picks_methodid['P'] != PICK_METHOD_ALIGNED:
+        elif 'PP' in self.picks and len(self.picks['PP']) > 0:
             
             t_ref = utct(self.picks['PP'])
             t_ref_type = 'PP'
@@ -2545,7 +2625,8 @@ class Event(object):
                                 ifreq + tr.data / maxfac,
                                 c='C%d' % (ifreq % 10),
                                 lw=0.5, zorder=50 - ifreq)
-        ax_fbs.set_yticks(range(0, nfreqs))
+        ax_fbs.set_yticks(ticks=range(0, nfreqs))
+        
         np.set_printoptions(precision=3)
         ticklabels = []
         for freq in freqs:
@@ -2572,21 +2653,13 @@ class Event(object):
         return freqs, envs_out
 
 
-    def plot_polarisation(self, t_pick_P, t_pick_S,
-                          rotation_coords='ZNE',
-                          baz=None,
-                          impact=False,
-                          zoom=False,
-                          kind='cwt', fmin=0.1, fmax=10.,
-                          winlen_sec=20., overlap=0.5,
-                          tstart=None, tend=None, vmin=-210,
-                          vmax=-165, log=True,
-                          dop_winlen=10, dop_specwidth=1.1,
-                          nf=100, w0=8,
-                          use_alpha=True, use_alpha2=False,
-                          alpha_inc=None, alpha_elli=1.0, alpha_azi=None,  # None when not used
-                          show=False,
-                          path_out='pol_plots'):
+    def plot_polarisation(
+        self, t_pick_P, t_pick_S, rotation_coords='ZNE', baz=None, 
+        impact=False, zoom=False, kind='cwt', fmin=0.1, fmax=10.0, 
+        winlen_sec=20.0, overlap=0.5, tstart=None, tend=None, vmin=-210,
+        vmax=-165, log=True, dop_winlen=10, dop_specwidth=1.1,
+        nf=100, w0=8, use_alpha=True, use_alpha2=False, alpha_inc=None, 
+        alpha_elli=1.0, alpha_azi=None, show=False, path_out='pol_plots'):
         
         if self.mars_event_type_short in ['HF', 'VF', '24']:
             timing_P = self.picks['Pg']
@@ -2640,23 +2713,24 @@ class Event(object):
         else:
             fname = f'{self.name}'
 
-        pa.plot_polarization_event_noise(self.waveforms_VBB,
-                                         t_pick_P, t_pick_S, #Window in [sec, sec] around picks
-                                         utct(timing_P), utct(timing_S), timing_noise,##UTC timings for the three window anchors
-                                         phase_P, phase_S, #Which phases/picks are used for the P and S windows
-                                         rotation = rotation_coords, BAZ=baz,
-                                         BAZ_fixed=BAZ_fixed, inc_fixed=inc_fixed,
-                                         kind=kind, fmin=fmin, fmax=fmax,
-                                         winlen_sec=winlen_sec, overlap=overlap,
-                                         tstart=tstart, tend=tend, vmin=vmin,
-                                         vmax=vmax, log=log,
-                                         dop_winlen=dop_winlen, dop_specwidth=dop_specwidth,
-                                         nf=nf, w0=w0,
-                                         use_alpha=use_alpha, use_alpha2=use_alpha2,
-                                         alpha_inc = alpha_inc, alpha_elli = alpha_elli, alpha_azi = alpha_azi,
-                                         f_band_density=f_band_density,
-                                         plot_6C = False, plot_spec_azi_only = False, zoom=zoom,
-                                         differentiate = True, detick_1Hz = True,
-                                         fname=fname, path='.',
-                                         impact = impact)
+        pa.plot_polarization_event_noise(
+            self.waveforms_VBB,
+            t_pick_P, t_pick_S, #Window in [sec, sec] around picks
+            utct(timing_P), utct(timing_S), timing_noise,##UTC timings for the three window anchors
+            phase_P, phase_S, #Which phases/picks are used for the P and S windows
+            rotation = rotation_coords, BAZ=baz,
+            BAZ_fixed=BAZ_fixed, inc_fixed=inc_fixed,
+            kind=kind, fmin=fmin, fmax=fmax,
+            winlen_sec=winlen_sec, overlap=overlap,
+            tstart=tstart, tend=tend, vmin=vmin,
+            vmax=vmax, log=log,
+            dop_winlen=dop_winlen, dop_specwidth=dop_specwidth,
+            nf=nf, w0=w0,
+            use_alpha=use_alpha, use_alpha2=use_alpha2,
+            alpha_inc = alpha_inc, alpha_elli = alpha_elli, alpha_azi = alpha_azi,
+            f_band_density=f_band_density,
+            plot_6C = False, plot_spec_azi_only = False, zoom=zoom,
+            differentiate = True, detick_1Hz = True,
+            fname=fname, path='.',
+            impact = impact)
 

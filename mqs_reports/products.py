@@ -40,14 +40,14 @@ from tqdm import tqdm
 
 from fittingparam import FittingParameterPool
 
-import mqs_reports.constants as constants
+import mqs_reports.constants as cnt
+import mqs_reports.utils as utils
 
 from mqs_reports.annotations import Annotations
 from mqs_reports.constants import PICKLE_EXTENSION
 from mqs_reports.event import ENVELOPE_CORNERS_COUNT, \
     FILTERBANK_CORNERS_COUNT, FILTERBANK_PLOT_SCALE_FACTOR, PICK_METHOD_ALIGNED
 
-from mqs_reports.utils import add_orientation_to_stream_info
 from mqs_reports.utils import envelope_smooth
 from mqs_reports.utils import uncertainty_from_pdf
 
@@ -55,94 +55,6 @@ from mqs_reports.utils import uncertainty_from_pdf
 from marsprocessingtools import utils as marsutils
 
 sns.set_theme(style="darkgrid")
-
-# original seaborn color_palette() used in older versions
-# index 0 blue, 1 orange, 2 green, 3 dark red, 7 darkgray, 9 turquoise
-
-# Paolo Veronese green
-COLOR_SPECTRA_FILTERED_TRACE = "#009b7d"
-
-# old silver (grey), darker than silver chalice
-COLOR_SPECTRA_NOISE = "#848482"
-
-# silver chalice (grey), lighter than old silver
-COLOR_SPECTRA_NOISE_HIGH_SPS = "#acacac"
-
-COLOR_SPECTRA_P_PHASE = "red"
-COLOR_SPECTRA_S_PHASE = "blue"
-
-# chartreuse
-COLOR_SPECTRA_MANUAL_FIT = "#7fff00"
-
-# sinopia (orange), darker than coral
-COLOR_SPECTRA_PHASE_P_LF = "#cb410b"
-
-# coral (orange), lighter than sinopia
-COLOR_SPECTRA_PHASE_P_HIGH_SPS = "#ff7f50"
-
-# new car (blue), darker than medium sky blue
-COLOR_SPECTRA_PHASE_S_LF = "#214fc6"
-
-# medium sky blue (blue), lighter than new car
-COLOR_SPECTRA_PHASE_S_HIGH_SPS = "#80daeb"
-
-COLOR_SPECTRA_DICT = {
-    "phase_p_lf": COLOR_SPECTRA_PHASE_P_LF, 
-    "phase_s_lf": COLOR_SPECTRA_PHASE_S_LF, 
-    "manual_fit": COLOR_SPECTRA_MANUAL_FIT, 
-    "phase_s": COLOR_SPECTRA_S_PHASE, 
-    "phase_p_high_sps": COLOR_SPECTRA_PHASE_P_HIGH_SPS,
-    "phase_s_high_sps": COLOR_SPECTRA_PHASE_S_HIGH_SPS,
-    "noise": COLOR_SPECTRA_NOISE, 
-    "noise_high_sps": COLOR_SPECTRA_NOISE_HIGH_SPS, 
-    "phase_p": COLOR_SPECTRA_P_PHASE}
-
-COLOR_SPECTRA_TOP_OT = "black"
-
-COLOR_SPECTRA_BOTTOM_FREQ_BOX = "darkgrey"
-COLOR_SPECTRA_BOTTOM_A0 = "cornflowerblue"
-COLOR_SPECTRA_BOTTOM_F_CENTER = "crimson"
-
-# Davy's grey
-COLOR_SPECTRA_TOP_TEXT_BOXES = "#555555"
-
-SPECTRA_FIGURE_SIZE = (20, 12)
-SPECTRA_FIGURE_POSITIONS = dict(
-    top=0.911, bottom=0.097, left=0.049, right=0.972, hspace=0.2, 
-    wspace=0.116)
-            
-SPECTRA_TEXT_BOXES_XCOORD = {
-    'type_quality': 0.05,
-    'origin_time': 0.15,
-    'raw_denoised_deglitched': 0.30,
-    'streamid_lf': 0.5,
-    'streamid_hf': 0.7,
-    'filtercode': 0.85}
-
-SPECTRA_TEXT_BOXES_YCOORD = 1.05
-SPECTRA_TEXT_BOXES_PADDING = 0.2
-SPECTRA_TEXT_BOXES_FACECOLOR = "white"
-
-SPECTRA_TEXT_BOX_PARAMS = {
-    'boxstyle': 'square', 
-    'facecolor': 'white', 
-    'edgecolor': COLOR_SPECTRA_TOP_TEXT_BOXES, 
-    'pad': SPECTRA_TEXT_BOXES_PADDING}
-
-
-SPECTRA_PLOT_TOP_XLABEL = "Time [seconds]"
-SPECTRA_PLOT_TOP_XLABEL_TEMPLATE = "Time after {} [seconds]"
-
-SPECTRA_PLOT_TOP_YLABEL = "Displacement ({}) [m]"
-
-SPECTRA_PLOT_BOTTOM_XLABEL = "Frequency [Hz]"
-SPECTRA_PLOT_BOTTOM_YLABEL = "Displacement PSD [dB]"
-
-SPECTRA_PLOT_BOTTOM_YAXIS_MIN_RANGE = 0.85
-SPECTRA_PLOT_BOTTOM_FC_LABEL_OFFSET = 1.0
-
-SPECTRA_PLOT_FILTER_BOX_LABEL_1 = r'$\mathrm{filter:\,HP_{BW}^{ZP}('
-SPECTRA_PLOT_FILTER_BOX_LABEL_2 = r'\,Hz)}$'
 
 
 def plot_spectra(
@@ -157,6 +69,11 @@ def plot_spectra(
     force_products: bool=False, 
     calculate_spectra: bool=False, 
     plot_spectra: bool=True) -> None:
+    """
+    Create spectra plots. If required/requested, pre-compute spectra and 
+    store them in JSON files.
+
+    """
     
     if (not rotate and 'ZNE' not in orientation):
         print("products.plot_spectra, ZNE not requested")
@@ -262,9 +179,9 @@ def plot_spectra(
                 event.quality, event.wf_type, smprate, rotate))
         
         detick_nfsamp = (
-            constants.SPECTRA_DETICK_NUMBER_SAMPLES if \
+            cnt.SPECTRA_DETICK_NUMBER_SAMPLES if \
                 wf_type != "DEGLITCHED" else \
-                    constants.SPECTRA_DETICK_NUMBER_SAMPLES_DEGLITCHED)
+                    cnt.SPECTRA_DETICK_NUMBER_SAMPLES_DEGLITCHED)
         
         try:
             # implicitly calls fitter.calc_spectra()
@@ -272,7 +189,7 @@ def plot_spectra(
                 event_name=event.name,
                 instrument=instrument, 
                 rotate=rotate,
-                winlen_sec=constants.SPECTRA_WELSH_WINDOW_LENGTH_SEC, 
+                winlen_sec=cnt.SPECTRA_WELSH_WINDOW_LENGTH_SEC, 
                 detick_nfsamp=detick_nfsamp,
                 time_windows=spectral_windows, 
                 smprate=smprate, 
@@ -287,8 +204,12 @@ def plot_spectra(
         if not plot_spectra:
             continue
         
+        # use event and event name from fitter, not from loop event
+        fi_event = fitter.event
+        fi_event_name = fitter.event.name
+        
         # continue only if plot requested
-        ev_folder = pjoin(dir_out, fitter.event.name)
+        ev_folder = pjoin(dir_out, fi_event_name)
 
         if not os.path.exists(ev_folder):
             os.makedirs(ev_folder)
@@ -300,11 +221,11 @@ def plot_spectra(
                     ev.name, smprate, component, ev.wf_type))
 
         fitting_parameters_pool = FittingParameterPool(
-            event_name=fitter.event.name)
+            event_name=fi_event_name)
         
-        if fitter.event.name in fitting_parameters:
+        if fi_event_name in fitting_parameters:
             fitting_parameters_pool.set_parameters(
-                fitting_parameters[fitter.event.name])
+                fitting_parameters[fi_event_name])
             fitting_parameters_pool.set_value(
                 None, 'is_manually_reviewed', True)
         
@@ -324,7 +245,7 @@ def plot_spectra(
             
             if defaults is None:
                 print("Error: no default fitting parameters found for event "\
-                    "{}".format(fitter.event.name))
+                    "{}".format(fi_event_name))
                 continue
             
             fitting_parameters_pool.set_parameters(defaults)
@@ -355,37 +276,13 @@ def plot_spectra(
                     fitting_parameters_pool.get_value("N", 'fmaxS')))
 
         # get stream from pre-computed waveforms
-        if instrument == 'VBB':
-            stream = fitter.event.waveforms_VBB.copy()
-        elif instrument == 'SP':
-            stream = fitter.event.waveforms_SP.copy()
-        elif instrument == 'VBB100':
-            stream = fitter.event.waveforms_VBB100.copy()
-        elif instrument == 'VBB+VBB100':
-            stream = fitter.event.waveforms_VBB100.copy()
-        elif instrument == 'VBB+SP':
-            stream = fitter.event.waveforms_SP.copy()
-        else:
-           raise ValueError(f'Invalid value for instrument: {instrument}')
-
+        stream = utils.get_stream_from_instrument(fi_event, instrument)
+        
         if rotate:
             if stream is not None:
-                stream.rotate('NE->RT', back_azimuth=fitter.event.baz)
-
-        LF_streaminfo = ""
-        LF_streaminfo_with_orientation = ""
-        HF_streaminfo = ""
-        HF_streaminfo_with_orientation = ""
+                stream.rotate('NE->RT', back_azimuth=fi_event.baz)
         
-        if 'stream_info' in fitter.event.spectra and \
-                fitter.event.spectra['stream_info'].startswith("LF"):
-            LF_streaminfo = fitter.event.spectra['stream_info']
-            
-        if 'stream_info' in fitter.event.spectra_SP and \
-                fitter.event.spectra_SP['stream_info'].startswith("HF"):
-            HF_streaminfo = fitter.event.spectra_SP['stream_info']
-
-        print("plotting spectra for event {}".format(event.name))
+        print("plotting spectra for event {}".format(fi_event_name))
         
         # get trace for plotting for requested component (orientation)
         for component in (['R','T'] if rotate else ['Z','N','E']):
@@ -394,7 +291,7 @@ def plot_spectra(
             
             tr = stream.select(channel=channel_name)[0].copy()
 
-            fnam = plot_filename(fitter.event, component)
+            fnam = plot_filename(fi_event, component)
 
             if pexists(fnam) and not(force_products):
                 print("products.plot_spectra: plot file {} exists, "\
@@ -408,42 +305,32 @@ def plot_spectra(
                 
             except Exception as e:
                 print(f'Error fitter.fit_for_component with event '\
-                    '{fitter.event.name} component {component}: {e}')
+                    '{fi_event_name} component {component}: {e}')
                 continue
 
-            print("products.plot_spectra: create figure for plot file {}".format(
-                fnam))
+            print("products.plot_spectra: create figure for plot file "\
+                "{}".format(fnam))
             
-            fig = plt.figure(figsize=SPECTRA_FIGURE_SIZE)
-            fig.subplots_adjust(**SPECTRA_FIGURE_POSITIONS)
+            streaminfo = utils.get_streaminfo(fi_event, component)
+            streaminfo_plot = utils.set_streaminfo_plot(
+                event, streaminfo, wf_type, component)
             
-            gs = fig.add_gridspec(2, 2)
+            fig = plt.figure(figsize=cnt.SPECTRA_FIGURE_SIZE)
+            # fig, _ = plt.subplots(**cnt.SPECTRA_FIGURE_PAR)
+            
+            gs = fig.add_gridspec(
+                cnt.SPECTRA_FIGURE_GRIDSPEC[0], cnt.SPECTRA_FIGURE_GRIDSPEC[1])
+            
             ax1 = fig.add_subplot(gs[0, :])
             ax2 = fig.add_subplot(gs[1, 0])
             ax3 = fig.add_subplot(gs[1, 1])
-    
-            streaminfo_plot = dict(
-                LF=None, HF=None, event_name=event.name, wf_type=wf_type,
-                origin_time_screen=event.origin_time_screen,
-                origin_time=event.origin_time)
             
-            if len(LF_streaminfo) > 0:
-                LF_streaminfo_with_orientation = add_orientation_to_stream_info(
-                    LF_streaminfo, component)
-                streaminfo_plot["LF"] = LF_streaminfo
-                streaminfo_plot["LF_orientation"] = \
-                    LF_streaminfo_with_orientation
+            fig.subplots_adjust(**cnt.SPECTRA_FIGURE_POSITIONS)
             
-            if len(HF_streaminfo) > 0:
-                HF_streaminfo_with_orientation = add_orientation_to_stream_info(
-                    HF_streaminfo, component)
-                streaminfo_plot["HF"] = HF_streaminfo
-                streaminfo_plot["HF_orientation"] = \
-                    HF_streaminfo_with_orientation
-            
+            suptitle_text = "Event {}".format(fi_event_name)
             fig.suptitle(
-                "Event {}".format(fitter.event.name), weight='bold', 
-                fontsize='x-large')
+                suptitle_text, weight='bold', 
+                fontsize=cnt.SPECTRA_PLOT_SUPTITLE_FONTSIZE)
             
             _plot_spectra_top(
                 fitter, ax1, tr, component, spectral_windows,
@@ -481,8 +368,8 @@ def _plot_spectra_top(
     starttime_screen = marsutils.get_rounded_timestamps(
         tr.stats.starttime).get('TIMESTAMP_READABLE_FORMAT')
     
-    ax.set(xlabel=SPECTRA_PLOT_TOP_XLABEL_TEMPLATE.format(starttime_screen))
-    ax.set(ylabel=SPECTRA_PLOT_TOP_YLABEL.format(stream_info_hflf))
+    ax.set(xlabel=cnt.SPECTRA_PLOT_TOP_XLABEL_TEMPLATE.format(starttime_screen))
+    ax.set(ylabel=cnt.SPECTRA_PLOT_TOP_YLABEL.format(stream_info_hflf))
 
     to_tr_time = lambda time_str: UTCDateTime(time_str) - tr.stats.starttime
 
@@ -502,14 +389,15 @@ def _plot_spectra_top(
     # plot filtered trace
     # NOTE: axis range is automatic
     trace_filtered = ax.plot(
-        tr.times(), tr.data, color=COLOR_SPECTRA_FILTERED_TRACE, linestyle='-',
-        label="filtered trace")
+        tr.times(), tr.data, color=cnt.COLOR_SPECTRA_FILTERED_TRACE, 
+        linestyle='-', label="filtered trace")
     
     # noise box
     rect_noise = patches.Rectangle(
         xy=(noise_start, data_min), width=noise_end-noise_start, 
         height=data_max-data_min, linewidth=3, 
-        edgecolor=COLOR_SPECTRA_NOISE, alpha=0.5, facecolor="none",
+        edgecolor=cnt.COLOR_SPECTRA_NOISE, 
+        alpha=0.5, facecolor="none",
         label="noise window")
     
     ax.add_patch(rect_noise)
@@ -517,7 +405,8 @@ def _plot_spectra_top(
     # P phase box
     rect_p = patches.Rectangle(
         xy=(p_start, data_min), width=p_end-p_start, height=data_max-data_min,
-        linewidth=3, edgecolor=COLOR_SPECTRA_P_PHASE, alpha=0.3, 
+        linewidth=3, edgecolor=cnt.COLOR_SPECTRA_P_PHASE, 
+        alpha=0.3, 
         facecolor="none", label="P phase window")
     
     ax.add_patch(rect_p)
@@ -525,7 +414,8 @@ def _plot_spectra_top(
     # S phase box
     rect_s = patches.Rectangle(
         xy=(s_start, data_min), width=s_end-s_start, height=data_max-data_min,
-        linewidth=3, edgecolor=COLOR_SPECTRA_S_PHASE, alpha=0.3, 
+        linewidth=3, edgecolor=cnt.COLOR_SPECTRA_S_PHASE, 
+        alpha=0.3, 
         facecolor="none", label="S phase window")
     
     ax.add_patch(rect_s)
@@ -574,67 +464,23 @@ def _plot_spectra_top(
     if p_phase:
         P = to_tr_time(p_phase)
         ax.axvspan(
-            xmin=P-0.5*width, xmax=P+0.5*width, facecolor=COLOR_SPECTRA_P_PHASE, 
+            xmin=P-0.5*width, xmax=P+0.5*width, 
+            facecolor=cnt.COLOR_SPECTRA_P_PHASE, 
             alpha=0.3, label="P phase")
         
     if s_phase:
         S = to_tr_time(s_phase)
         ax.axvspan(
-            xmin=S-0.5*width, xmax=S+0.5*width, facecolor=COLOR_SPECTRA_S_PHASE, 
+            xmin=S-0.5*width, xmax=S+0.5*width, 
+            facecolor=cnt.COLOR_SPECTRA_S_PHASE, 
             alpha=0.3, label="S phase")
     
     # top subtitle text boxes (type/quality, OT, wf type, LF, HF, filter)
-    ax.text(SPECTRA_TEXT_BOXES_XCOORD['type_quality'], 
-        SPECTRA_TEXT_BOXES_YCOORD, 
-        "{}/Q{}".format(fitter.event.mars_event_type_short, 
-        fitter.event.quality),
-        verticalalignment='center', horizontalalignment='center',
-        transform=ax.transAxes, bbox=SPECTRA_TEXT_BOX_PARAMS,
-        color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
-    
-    ax.text(SPECTRA_TEXT_BOXES_XCOORD['origin_time'], 
-        SPECTRA_TEXT_BOXES_YCOORD, 
-        "OT: {}".format(streaminfo_plot["origin_time_screen"]),
-        verticalalignment='center', horizontalalignment='center',
-        transform=ax.transAxes, bbox=SPECTRA_TEXT_BOX_PARAMS,
-        color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
-    
-    ax.text(SPECTRA_TEXT_BOXES_XCOORD['raw_denoised_deglitched'], 
-        SPECTRA_TEXT_BOXES_YCOORD, 
-        "{} waveforms".format(streaminfo_plot["wf_type"].lower()),
-        verticalalignment='center', horizontalalignment='center',
-        transform=ax.transAxes, bbox=SPECTRA_TEXT_BOX_PARAMS,
-        color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
-        
-    if streaminfo_plot["LF"] is not None:
-        ax.text(SPECTRA_TEXT_BOXES_XCOORD['streamid_lf'], 
-            SPECTRA_TEXT_BOXES_YCOORD, 
-            streaminfo_plot["LF_orientation"],
-            verticalalignment='center', horizontalalignment='center',
-            transform=ax.transAxes, bbox=SPECTRA_TEXT_BOX_PARAMS,
-            color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
-    
-    if streaminfo_plot["HF"] is not None:
-        ax.text(SPECTRA_TEXT_BOXES_XCOORD['streamid_hf'], 
-            SPECTRA_TEXT_BOXES_YCOORD, 
-            streaminfo_plot["HF_orientation"],
-            verticalalignment='center', horizontalalignment='center',
-            transform=ax.transAxes, bbox=SPECTRA_TEXT_BOX_PARAMS,
-            color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
-    
-    filterbox_text_sub = SPECTRA_PLOT_FILTER_BOX_LABEL_1 + \
-        str(constants.WAVEFORM_READ_FILTER_HIGHPASS_FMIN) + \
-        SPECTRA_PLOT_FILTER_BOX_LABEL_2
-    
-    ax.text(SPECTRA_TEXT_BOXES_XCOORD['filtercode'], SPECTRA_TEXT_BOXES_YCOORD, 
-        filterbox_text_sub, verticalalignment='center', 
-        horizontalalignment='center',
-        transform=ax.transAxes, bbox=SPECTRA_TEXT_BOX_PARAMS,
-        color=COLOR_SPECTRA_TOP_TEXT_BOXES, fontsize=15)
+    utils.add_suptitle_textboxes(ax, streaminfo_plot, kind='spectra')
     
 
 def _set_axis_limits_psd_denoised(
-    axis, data, ymin_scale=SPECTRA_PLOT_BOTTOM_YAXIS_MIN_RANGE):
+    axis, data, ymin_scale=cnt.SPECTRA_PLOT_BOTTOM_YAXIS_MIN_RANGE):
     """
     Set minimum of y axis for denoised PSD.
     """
@@ -695,16 +541,16 @@ def _plot_spectra_bottom(
     # P phase subplot
     axP.set_title(f'P phase [{component}]')
     axP.set(
-        xlabel=SPECTRA_PLOT_BOTTOM_XLABEL, ylabel=SPECTRA_PLOT_BOTTOM_YLABEL, 
-        xscale='log')
+        xlabel=cnt.SPECTRA_PLOT_BOTTOM_XLABEL, 
+        ylabel=cnt.SPECTRA_PLOT_BOTTOM_YLABEL, xscale='log')
     
     # S phase subplot
     axS.set_title(f'S phase [{component}]')
     axS.set(
-        xlabel=SPECTRA_PLOT_BOTTOM_XLABEL, ylabel=SPECTRA_PLOT_BOTTOM_YLABEL,
-        xscale='log')
+        xlabel=cnt.SPECTRA_PLOT_BOTTOM_XLABEL, 
+        ylabel=cnt.SPECTRA_PLOT_BOTTOM_YLABEL, xscale='log')
     
-    colors = COLOR_SPECTRA_DICT
+    colors = cnt.COLOR_SPECTRA_DICT
     
     ## VBB
     if streaminfo_plot["LF"]:
@@ -782,10 +628,13 @@ def _plot_spectra_bottom(
     if fmin and fmax:
         axP.axvspan(
             xmin=axP.get_xlim()[0], xmax=fmin, 
-            facecolor=COLOR_SPECTRA_BOTTOM_FREQ_BOX, alpha=0.3)
+            facecolor=cnt.COLOR_SPECTRA_BOTTOM_FREQ_BOX, 
+            alpha=0.3)
+        
         axP.axvspan(
             xmin=fmax, xmax=axP.get_xlim()[1], 
-            facecolor=COLOR_SPECTRA_BOTTOM_FREQ_BOX, alpha=0.3)
+            facecolor=cnt.COLOR_SPECTRA_BOTTOM_FREQ_BOX, 
+            alpha=0.3)
 
     # frequency ranges - S
     fmin = fitting_parameters.get_value(component, f'fminS')
@@ -794,10 +643,10 @@ def _plot_spectra_bottom(
     if fmin and fmax:
         axS.axvspan(
             xmin=axS.get_xlim()[0], xmax=fmin, 
-            facecolor=COLOR_SPECTRA_BOTTOM_FREQ_BOX, alpha=0.3)
+            facecolor=cnt.COLOR_SPECTRA_BOTTOM_FREQ_BOX, alpha=0.3)
         axS.axvspan(
             xmin=fmax, xmax=axS.get_xlim()[1], 
-            facecolor=COLOR_SPECTRA_BOTTOM_FREQ_BOX, alpha=0.3)
+            facecolor=cnt.COLOR_SPECTRA_BOTTOM_FREQ_BOX, alpha=0.3)
 
     if fitting_parameters.get_value(None, 'is_manually_reviewed'):
         
@@ -877,13 +726,17 @@ def _plot_spectra_bottom(
 
 def _add_origin_time_marker(axis, ot_plot):
     
-    axis.axvline(x=ot_plot, color=COLOR_SPECTRA_TOP_OT, alpha=0.3)
+    axis.axvline(
+        x=ot_plot, color=cnt.COLOR_SPECTRA_TOP_OT, 
+        alpha=cnt.SPECTRA_PLOT_TOP_OT_MARKER_ALPHA)
     
     yaxis_min = axis.get_ylim()[0]
     ot_label_ycoord = yaxis_min + 0.05 * np.abs(yaxis_min)
     
-    axis.annotate('OT', xy=(ot_plot, ot_label_ycoord), 
-        color=COLOR_SPECTRA_TOP_OT, alpha=0.5)
+    axis.annotate(
+        cnt.SPECTRA_PLOT_TOP_OT_LABEL, xy=(ot_plot, ot_label_ycoord), 
+        color=cnt.COLOR_SPECTRA_TOP_OT, 
+        alpha=cnt.SPECTRA_PLOT_TOP_OT_LABEL_ALPHA)
 
 
 def _add_a0_marker(
@@ -901,30 +754,52 @@ def _add_a0_marker(
         xlim_pair_s = axS.get_xlim()
     
     if lines:
-        axP.axhline(y=fitting_parameters.get_value(component, 'A0'), 
-            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3)
-        axP.axhline(y=fitting_parameters.get_value(component, 'A0-low'), 
-            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3, linestyle='dashed')
-        axP.axhline(y=fitting_parameters.get_value(component, 'A0-high'), 
-            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3, linestyle='dashed')
+        axP.axhline(
+            y=fitting_parameters.get_value(component, 'A0'), 
+            color=cnt.COLOR_SPECTRA_BOTTOM_A0, 
+            alpha=cnt.SPECTRA_PLOT_BOTTOM_A0_MARKER_ALPHA)
+        
+        axP.axhline(
+            y=fitting_parameters.get_value(component, 'A0-low'), 
+            color=cnt.COLOR_SPECTRA_BOTTOM_A0, 
+            alpha=cnt.SPECTRA_PLOT_BOTTOM_A0_MARKER_ALPHA, 
+            linestyle=cnt.SPECTRA_PLOT_BOTTOM_A0_MARKER_LINESTYLE)
+        
+        axP.axhline(
+            y=fitting_parameters.get_value(component, 'A0-high'), 
+            color=cnt.COLOR_SPECTRA_BOTTOM_A0, 
+            alpha=cnt.SPECTRA_PLOT_BOTTOM_A0_MARKER_ALPHA, 
+            linestyle=cnt.SPECTRA_PLOT_BOTTOM_A0_MARKER_LINESTYLE)
     
-        axS.axhline(y=fitting_parameters.get_value(component, 'A0'), 
-            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3)
-        axS.axhline(y=fitting_parameters.get_value(component, 'A0-low'), 
-            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3, linestyle='dashed')
-        axS.axhline(y=fitting_parameters.get_value(component, 'A0-high'), 
-            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.3, linestyle='dashed')
+        axS.axhline(
+            y=fitting_parameters.get_value(component, 'A0'), 
+            color=cnt.COLOR_SPECTRA_BOTTOM_A0, 
+            alpha=cnt.SPECTRA_PLOT_BOTTOM_A0_MARKER_ALPHA)
+        
+        axS.axhline(
+            y=fitting_parameters.get_value(component, 'A0-low'), 
+            color=cnt.COLOR_SPECTRA_BOTTOM_A0, 
+            alpha=cnt.SPECTRA_PLOT_BOTTOM_A0_MARKER_ALPHA, 
+            linestyle=cnt.SPECTRA_PLOT_BOTTOM_A0_MARKER_LINESTYLE)
+        
+        axS.axhline(
+            y=fitting_parameters.get_value(component, 'A0-high'), 
+            color=cnt.COLOR_SPECTRA_BOTTOM_A0, 
+            alpha=cnt.SPECTRA_PLOT_BOTTOM_A0_MARKER_ALPHA, 
+            linestyle=cnt.SPECTRA_PLOT_BOTTOM_A0_MARKER_LINESTYLE)
     
     if label:
         axP.annotate(
             'A0',
             xy=(xlim_pair_p[0], fitting_parameters.get_value(component, 'A0')),
-            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.5)
+            color=cnt.COLOR_SPECTRA_BOTTOM_A0, 
+            alpha=cnt.SPECTRA_PLOT_BOTTOM_A0_LABEL_ALPHA)
 
         axS.annotate(
             'A0',
             xy=(xlim_pair_s[0], fitting_parameters.get_value(component, 'A0')),
-            color=COLOR_SPECTRA_BOTTOM_A0, alpha=0.5)
+            color=cnt.COLOR_SPECTRA_BOTTOM_A0, 
+            alpha=cnt.SPECTRA_PLOT_BOTTOM_A0_LABEL_ALPHA)
 
 
 def _add_fc_marker(
@@ -944,38 +819,54 @@ def _add_fc_marker(
     if lines:
         axP.axvline(
             x=fitting_parameters.get_value(component, 'cornerfrequency'),
-            color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3)
+            color=cnt.COLOR_SPECTRA_BOTTOM_F_CENTER, 
+            alpha=cnt.SPECTRA_PLOT_BOTTOM_FC_MARKER_ALPHA)
+        
         axP.axvline(
             x=fitting_parameters.get_value(component, 'cornerfreq-low'), 
-            color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3, linestyle='dashed')
+            color=cnt.COLOR_SPECTRA_BOTTOM_F_CENTER, 
+            alpha=cnt.SPECTRA_PLOT_BOTTOM_FC_MARKER_ALPHA, 
+            linestyle=cnt.SPECTRA_PLOT_BOTTOM_FC_MARKER_LINESTYLE)
+        
         axP.axvline(
             x=fitting_parameters.get_value(component, 'cornerfreq-high'),
-            color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3, linestyle='dashed')
+            color=cnt.COLOR_SPECTRA_BOTTOM_F_CENTER, 
+            alpha=cnt.SPECTRA_PLOT_BOTTOM_FC_MARKER_ALPHA, 
+            linestyle=cnt.SPECTRA_PLOT_BOTTOM_FC_MARKER_LINESTYLE)
         
         axS.axvline(
             x=fitting_parameters.get_value(component, 'cornerfrequency'),
-            color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3)
+            color=cnt.COLOR_SPECTRA_BOTTOM_F_CENTER, 
+            alpha=cnt.SPECTRA_PLOT_BOTTOM_FC_MARKER_ALPHA)
+        
         axS.axvline(
             x=fitting_parameters.get_value(component, 'cornerfreq-low'), 
-            color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3, linestyle='dashed')
+            color=cnt.COLOR_SPECTRA_BOTTOM_F_CENTER, 
+            alpha=cnt.SPECTRA_PLOT_BOTTOM_FC_MARKER_ALPHA, 
+            linestyle=cnt.SPECTRA_PLOT_BOTTOM_FC_MARKER_LINESTYLE)
+        
         axS.axvline(
             x=fitting_parameters.get_value(component, 'cornerfreq-high'),
-            color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.3, linestyle='dashed')
+            color=cnt.COLOR_SPECTRA_BOTTOM_F_CENTER, 
+            alpha=cnt.SPECTRA_PLOT_BOTTOM_FC_MARKER_ALPHA, 
+            linestyle=cnt.SPECTRA_PLOT_BOTTOM_FC_MARKER_LINESTYLE)
     
     if label:
         axP.annotate(
             'fc', 
             xy=(
                 fitting_parameters.get_value(component, 'cornerfrequency'),
-                ylim_pair_p[0] + SPECTRA_PLOT_BOTTOM_FC_LABEL_OFFSET),
-            color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.5)
+                ylim_pair_p[0] + cnt.SPECTRA_PLOT_BOTTOM_FC_LABEL_OFFSET),
+            color=cnt.COLOR_SPECTRA_BOTTOM_F_CENTER, 
+            alpha=cnt.SPECTRA_PLOT_BOTTOM_FC_LABEL_ALPHA)
         
         axS.annotate(
             'fc', 
             xy=(
                 fitting_parameters.get_value(component, 'cornerfrequency'),
-                ylim_pair_s[0] + SPECTRA_PLOT_BOTTOM_FC_LABEL_OFFSET), 
-            color=COLOR_SPECTRA_BOTTOM_F_CENTER, alpha=0.5)
+                ylim_pair_s[0] + cnt.SPECTRA_PLOT_BOTTOM_FC_LABEL_OFFSET), 
+            color=cnt.COLOR_SPECTRA_BOTTOM_F_CENTER, 
+            alpha=cnt.SPECTRA_PLOT_BOTTOM_FC_LABEL_ALPHA)
 
 
 def plot_filterbanks(
@@ -991,12 +882,19 @@ def plot_filterbanks(
     force_products: bool=False, 
     calculate_filterbanks: bool=False, 
     plot_filterbanks: bool=True):
+    """
+    Create filterbank plots. If required/requested, pre-compute filtered
+    traces and store them in event pickle.
+
+    NOTE: plot is created in event.plot_filterbank()
+    
+    """
 
     # print("catalog: available normtypes: {}".format(norm))
     # print("catalog: requested normtypes: {}".format(normtype))
     
-    print("products: calculate/plot filterbanks for {} waveforms (smprate {}, "\
-        "ZRT {})".format(wf_type, smprate, rotate))
+    print("products: calculate/plot filterbanks for {} waveforms (smprate {}"\
+        ", ZRT {})".format(wf_type, smprate, rotate))
     
     if normtype not in norm:
         print("catalog: plot_filterbanks, norm {} not requested".format(
@@ -1140,15 +1038,17 @@ def plot_filterbanks(
                 keep_filterbanks=plot_filterbanks)
             
             
-        except Exception as e:
-            print(f"Error products.filter_traces with event {event.name}: {e}")
-            continue
+        except Exception as err:
+            error_str = \
+                f"Error products.filter_traces with event {event.name}: {err}"
+            raise RuntimeError(error_str)
+            # continue
 
         if not plot_filterbanks:
             continue
         
         
-        ## FROM HERE ON IT IS PLOTTING
+        ## from here on plot code is called, event.plot_filterbank()
         
         # TODO(fab): move into plot function
         ev_folder = pjoin(dir_out, event.name)
@@ -1168,6 +1068,7 @@ def plot_filterbanks(
 
         hasdata = False
         
+        # 'out' plot
         if not pexists(fnam) or force_products:
             
             try:
@@ -1179,76 +1080,115 @@ def plot_filterbanks(
                 event.plot_filterbank(
                     normwindow='all', 
                     annotations=annotations,
-                    starttime=event.starttime - 300.0,
-                    endtime=event.endtime + 300.0,
+                    starttime=event.starttime - \
+                        cnt.PLOT_FILTERBANK_START_END_TIME_MARGIN_OUT_SEC,
+                    endtime=event.endtime + \
+                        cnt.PLOT_FILTERBANK_START_END_TIME_MARGIN_OUT_SEC,
                     instrument=instrument,
                     fnam=fnam, 
                     fmin=fmin, 
                     fmax=fmax, 
                     df=df,
                     normtype=normtype, 
-                    rotate=rotate)
+                    rotate=rotate,
+                    wf_type=wf_type)
             
             except (AttributeError, IndexError) as err:
-                print( f"Exception in filterbank for event "\
-                    "{event.name}: {err}")
+                # print("Error in plot_filterbank() for out: {}".format(err))
+                
+                error_str = "Error in plot_filterbank() for out: {}".format(err)
+                raise RuntimeError(error_str)
+        
             
             else:
                 hasdata = True
 
-        if event.quality in ['A', 'B', 'C'] and hasdata:
+        # 'in' and 'phase' plot
+        # only for quality A, B, C
+        if event.quality in cnt.QUALITY_FOR_FILTERBANK and hasdata:
             
             fnam = plot_filename(event, 'in')
-            try:
-                if not pexists(fnam) or force_products:
-                    
-                    # TODO(fab): use event.plot_parameters['filterbanks']['t_P']
-                    print("catalog: plot filterbanks for event {}, {}/Q{}, "\
-                        "wf {}, smprate {}, ZRT {}, norm {}".format(
-                        event.name, event.mars_event_type_short, event.quality, 
-                        event.wf_type, smprate, rotate, normtype))
+            
+            # 'in' plot
+            if not pexists(fnam) or force_products:
                 
+                # TODO(fab): use event.plot_parameters['filterbanks']['t_P']
+                print("catalog: plot filterbanks for event {}, {}/Q{}, "\
+                    "wf {}, smprate {}, ZRT {}, norm {}".format(
+                    event.name, event.mars_event_type_short, event.quality, 
+                    event.wf_type, smprate, rotate, normtype))
+            
+                try:
                     event.plot_filterbank(
-                        starttime=t_P - 300.,
-                        endtime=t_P + 1100.,
+                        starttime=t_P - \
+                            cnt.PLOT_FILTERBANK_START_TIME_MARGIN_IN_SEC,
+                        endtime=t_P + \
+                            cnt.PLOT_FILTERBANK_END_TIME_MARGIN_IN_SEC,
                         normwindow='S',
                         annotations=annotations,
-                        tmin_plot=-240., 
-                        tmax_plot=900.,
+                        tmin_plot=\
+                            cnt.PLOT_FILTERBANK_TIME_MIN_PLOT_MARGIN_IN_SEC, 
+                        tmax_plot=\
+                            cnt.PLOT_FILTERBANK_TIME_MAX_PLOT_MARGIN_IN_SEC,
                         fnam=fnam,
                         instrument=instrument,
                         fmin=fmin, 
                         fmax=fmax, 
                         df=df,
                         normtype=normtype, 
-                        rotate=rotate)
+                        rotate=rotate,
+                        wf_type=wf_type)
+                    
+                except (IndexError, AttributeError) as err:
+                    # print("Error in plot_filterbank() for in: {}".format(err))
+                    
+                    error_str = "Error in plot_filterbank() for in: {}".format(
+                        err)
+                    raise RuntimeError(error_str)
+            
 
-                if t_S is not None:
-                    fnam = plot_filename(event, 'phases')
-                    if not pexists(fnam) or force_products:
-                        print("catalog: plot filterbanks for event {}, {}/Q{}, "\
-                            "wf {}, smprate {}, ZRT {}, norm {}".format(
-                            event.name, event.mars_event_type_short, event.quality, 
-                            event.wf_type, smprate, rotate, normtype))
+            # 'phase' plot
+            if t_S is not None:
                 
+                fnam = plot_filename(event, 'phases')
+                
+                if not pexists(fnam) or force_products:
+                    
+                    print("catalog: plot filterbanks for event {}, {}/Q{}"\
+                        ", wf {}, smprate {}, ZRT {}, norm {}".format(
+                        event.name, event.mars_event_type_short, 
+                        event.quality, event.wf_type, smprate, rotate, 
+                        normtype))
+            
+                    try:
                         event.plot_filterbank(
-                            starttime=t_P - 120.,
-                            endtime=t_S + 240.,
+                            starttime=t_P - \
+                                cnt.PLOT_FILTERBANK_START_TIME_MARGIN_PHASE_SEC,
+                            endtime=t_S + \
+                                cnt.PLOT_FILTERBANK_END_TIME_MARGIN_PHASE_SEC,
                             normwindow='S',
                             annotations=annotations,
-                            tmin_plot=-50.,
-                            tmax_plot=t_S - t_P + 200.,
+                            tmin_plot=\
+                                cnt.PLOT_FILTERBANK_TIME_MIN_PLOT_MARGIN_PHASE_SEC,
+                            tmax_plot=t_S - t_P + \
+                                cnt.PLOT_FILTERBANK_TIME_MAX_PLOT_MARGIN_PHASE_SEC,
                             fnam=fnam,
                             instrument=instrument,
                             fmin=fmin, 
                             fmax=fmax, 
                             df=df,
                             normtype=normtype, 
-                            rotate=rotate)
+                            rotate=rotate,
+                            wf_type=wf_type)
+                        
+                    except (IndexError, AttributeError) as err:
+                        # print("Error in plot_filterbank() for phase: {}".format(
+                        #     err))
+                        
+                        error_str = "Error in plot_filterbank() for phase: "\
+                            "{}".format(err)
+                        raise RuntimeError(error_str)
             
-            except (IndexError, AttributeError) as err:
-                print(f"Exception in filterbank for event "\
-                    "{event.name}: {err}")
                 
         plt.close()
 
@@ -1270,8 +1210,8 @@ def filter_traces_for_filterbanks(
     instrument: str="", 
     f_VBB_SP_transition=7.5, 
     fnam: str=None,
-    station: str=constants.DEFAULT_STATION_NAME,
-    location_code: str=constants.DEFAULT_LOCATION_CODE, 
+    station: str=cnt.DEFAULT_STATION_NAME,
+    location_code: str=cnt.DEFAULT_LOCATION_CODE, 
     wf_type="RAW", 
     normtype="none", 
     rotate=False, 
@@ -1281,6 +1221,8 @@ def filter_traces_for_filterbanks(
     keep_filterbanks: bool=True):
 
     """
+    Compute filtered traces for filterbank plots. If required/requested,
+    store them in event pickle.
     
     """
 
@@ -1330,6 +1272,8 @@ def filter_traces_for_filterbanks(
     
     event.filterbank_data = dict()
     
+    event.filterbank_data['orientation'] = orientation
+    
     # Determine frequencies
     event.filterbank_data['fmin'] = fmin
     event.filterbank_data['fmax'] = fmax
@@ -1372,7 +1316,8 @@ def filter_traces_for_filterbanks(
         st_LF = event.waveforms_VBB.select(channel='??[ENZ]').copy()
         st_HF = event.waveforms_VBB.select(channel='??[ENZ]').copy()
 
-        st_LF_desc = f'LF: {st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
+        st_LF_desc = f'LF: {st_LF[0].stats.station}.{st_LF[0].stats.location}.\
+            {st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
         st_HF_desc = ''
     
     elif instrument == 'VBB100':
@@ -1380,27 +1325,33 @@ def filter_traces_for_filterbanks(
         st_HF = event.waveforms_VBB100.select(channel='??[ENZ]').copy()
         
         st_LF_desc = ''
-        st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+        st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.\
+            {st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
     
     elif instrument == 'SP':
         st_LF = event.waveforms_SP.select(channel='??[ENZ]').copy()
         st_HF = event.waveforms_SP.select(channel='??[ENZ]').copy()
         st_LF_desc = ''
-        st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+        st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.\
+            {st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
     
     elif instrument == 'VBB+VBB100':
         st_LF = event.waveforms_VBB.select(channel='??[ENZ]').copy()
         st_HF = event.waveforms_VBB100.select(channel='??[ENZ]').copy()
         
-        st_LF_desc = f'LF: {st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
-        st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+        st_LF_desc = f'LF: {st_LF[0].stats.station}.{st_LF[0].stats.location}.\
+            {st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
+        st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.\
+            {st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
     
     elif instrument == 'VBB+SP':
         st_LF = event.waveforms_VBB.select(channel='??[ENZ]').copy()
         st_HF = event.waveforms_SP.select(channel='??[ENZ]').copy()
         
-        st_LF_desc = f'LF: {st_LF[0].stats.station}.{st_LF[0].stats.location}.{st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
-        st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.{st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
+        st_LF_desc = f'LF: {st_LF[0].stats.station}.{st_LF[0].stats.location}.\
+            {st_LF[0].stats.channel[0:2]}@{st_LF[0].stats.sampling_rate}'
+        st_HF_desc = f'HF: {st_HF[0].stats.station}.{st_HF[0].stats.location}.\
+            {st_HF[0].stats.channel[0:2]}@{st_HF[0].stats.sampling_rate}'
     
     else:
         raise ValueError(f'Invalid value for instrument: {instrument}')
