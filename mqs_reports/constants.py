@@ -413,10 +413,10 @@ FILTERBANK_TEXT_BOXES_XCOORD = {
     'type_quality': 0.05,
     'origin_time': 0.165,
     'p_phase_time': 0.325,
-    'raw_denoised_deglitched': 0.5,
-    'streamid_lf': 0.65,
-    'streamid_hf': 0.75,
-    'freq_range': 0.90}
+    'raw_denoised_deglitched': 0.475,
+    'streamid_lf': 0.625,
+    'streamid_hf': 0.774,
+    'freq_range': 0.925}
 
 FILTERBANK_TEXT_BOXES_YCOORD = 1.05
 FILTERBANK_TEXT_BOXES_PADDING = 0.2
